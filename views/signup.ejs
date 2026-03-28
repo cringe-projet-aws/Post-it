@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Inscription - Post-it sociaux</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body class="auth-page">
+    <div class="auth-card">
+      <h1>Créer un compte</h1>
+
+      <% if (messages.error && messages.error.length) { %>
+      <div class="flash flash-error">
+        <% messages.error.forEach(function(m) { %>
+        <div><%= m %></div>
+        <% }); %>
+      </div>
+      <% } %>
+      <% if (messages.success && messages.success.length) { %>
+      <div class="flash flash-success">
+        <% messages.success.forEach(function(m) { %>
+        <div><%= m %></div>
+        <% }); %>
+      </div>
+      <% } %>
+
+      <form action="/signup" method="post" class="signup-form">
+        <label>
+          Nom d’utilisateur
+          <input type="text" name="username" required />
+        </label>
+        <label>
+          Mot de passe
+          <input type="password" name="password" required />
+        </label>
+        <button type="submit" class="btn btn-primary">S’inscrire</button>
+      </form>
+
+      <a href="/" class="link-small">Retour au tableau</a>
+    </div>
+  </body>
+</html>
+

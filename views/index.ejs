@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Post-it sociaux - <%= board %></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <header class="top-bar">
+      <div class="brand">
+        <span class="logo-square"></span>
+        <span class="title">Post-it sociaux</span>
+        <span class="board-name">Tableau : <%= board %></span>
+        <form class="board-switcher" autocomplete="off">
+          <input
+            id="board-search"
+            type="text"
+            inputmode="text"
+            placeholder="Aller au tableau…"
+            aria-label="Aller à un autre tableau"
+          />
+          <button type="submit" class="btn btn-primary btn-compact">Aller</button>
+          <a href="/" class="btn btn-secondary btn-compact" title="Retour au tableau default">Default</a>
+        </form>
+      </div>
+      <div class="auth">
+        <% if (currentUser) { %>
+        <span class="welcome">Bonjour, <strong><%= currentUser.username %></strong></span>
+        <a href="/logout" class="btn btn-secondary">Déconnexion</a>
+        <% } else { %>
+        <form action="/login" method="post" class="login-form">
+          <input type="text" name="username" placeholder="Nom d’utilisateur" required />
+          <input type="password" name="password" placeholder="Mot de passe" required />
+          <button type="submit" class="btn btn-primary">Connexion</button>
+          <a href="/signup" class="link-small">Inscription</a>
+        </form>
+        <% } %>
+      </div>
+    </header>
+
+    <main id="board" class="board" data-board="<%= board %>">
+      <% if (messages.error && messages.error.length) { %>
+      <div class="flash flash-error">
+        <% messages.error.forEach(function(m) { %>
+        <div><%= m %></div>
+        <% }); %>
+      </div>
+      <% } %>
+      <% if (messages.success && messages.success.length) { %>
+      <div class="flash flash-success">
+        <% messages.success.forEach(function(m) { %>
+        <div><%= m %></div>
+        <% }); %>
+      </div>
+      <% } %>
+
+      <div class="hint">
+        Double-cliquez n’importe où pour ajouter un post-it.
+        <% if (!currentUser) { %>
+        <span class="hint-muted">(Vous devez être connecté pour créer / modifier.)</span>
+        <% } %>
+      </div>
+
+      <% postits.forEach(function(p) { %>
+      <div
+        class="postit"
+        data-id="<%= p.id %>"
+        data-author-id="<%= p.author_id %>"
+        style="left: <%= p.x %>px; top: <%= p.y %>px; z-index: <%= p.z_index %>;"
+      >
+        <div class="postit-header">
+          <span class="postit-author"><%= p.author_name %></span>
+          <span class="postit-date"><%= new Date(p.created_at).toLocaleString('fr-FR') %></span>
+          <% if (currentUser && (currentUser.id === p.author_id || currentUser.can_admin)) { %>
+          <button class="icon-button edit-postit" title="Modifier">✏️</button>
+          <button class="icon-button delete-postit" title="Supprimer">✖</button>
+          <% } %>
+        </div>
+        <div class="postit-body"><%= p.text %></div>
+      </div>
+      <% }); %>
+    </main>
+
+    <!-- Modal création / édition -->
+    <div id="postit-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2 id="modal-title">Nouveau post-it</h2>
+        <textarea id="postit-text" rows="4" placeholder="Votre message..."></textarea>
+        <div class="modal-actions">
+          <button id="modal-cancel" class="btn btn-secondary">Annuler</button>
+          <button id="modal-save" class="btn btn-primary">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.CURRENT_USER = <%- JSON.stringify(currentUser || null) %>;
+      window.CURRENT_BOARD = <%- JSON.stringify(board || 'default') %>;
+    </script>
+    <script src="/js/app.js"></script>
+  </body>
+</html>
+

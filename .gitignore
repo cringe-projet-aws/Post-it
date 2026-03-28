@@ -1,0 +1,36 @@
+# Dépendances
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Variables d'environnement
+.env
+.env.local
+.env.*.local
+
+# Fichiers de base de données
+*.db
+*.sqlite
+*.sqlite3
+
+# Fichiers de session
+sessions.db
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Système
+.DS_Store
+Thumbs.db
+
+# Fichiers temporaires
+tmp/
+temp/

@@ -1,0 +1,431 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden; /* remove scrollbars */
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #eef2ff;
+  color: #0f172a;
+}
+
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: rgba(17, 24, 39, 0.82);
+  color: #f9fafb;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.logo-square {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: #facc15;
+  box-shadow: 0 0 0 2px #0f172a;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.board-name {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.board-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.6rem;
+}
+
+.btn-compact {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+#board-search {
+  width: min(240px, 40vw);
+}
+
+.auth {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.login-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+input[type='text'],
+input[type='password'],
+textarea {
+  border-radius: 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.9rem;
+  background: rgba(255, 255, 255, 0.92);
+  transition: box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.9);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.22);
+}
+
+.btn {
+  border: none;
+  border-radius: 9999px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.btn-primary {
+  background: #2563eb;
+  color: white;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
+}
+
+.btn-primary:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #374151;
+  color: white;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.25);
+}
+
+.btn-secondary:hover {
+  background: #4b5563;
+  transform: translateY(-1px);
+}
+
+.link-small {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  text-decoration: none;
+}
+
+.link-small:hover {
+  text-decoration: underline;
+}
+
+.welcome {
+  font-size: 0.9rem;
+}
+
+.board {
+  position: relative;
+  width: 100vw;
+  height: calc(100dvh - var(--topbar-h, 56px));
+  overflow: hidden;
+  touch-action: none; /* prevent page scroll while interacting */
+  background:
+    radial-gradient(1200px 600px at 10% 10%, rgba(59, 130, 246, 0.18), transparent 55%),
+    radial-gradient(1000px 700px at 85% 20%, rgba(236, 72, 153, 0.12), transparent 50%),
+    radial-gradient(900px 650px at 65% 90%, rgba(34, 197, 94, 0.10), transparent 55%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+}
+
+.hint {
+  position: absolute;
+  top: 0.75rem;
+  left: 1rem;
+  padding: 0.4rem 0.7rem;
+  background: rgba(15, 23, 42, 0.78);
+  color: #e5e7eb;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  z-index: 999;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-shadow: 0 14px 40px rgba(2, 6, 23, 0.32);
+}
+
+.hint::before {
+  content: 'i';
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.9);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+}
+
+.hint-muted {
+  color: #9ca3af;
+}
+
+.postit {
+  position: absolute;
+  width: 210px;
+  min-height: 140px;
+  padding: 0.6rem 0.7rem 0.9rem;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 235, 0.9) 0%, rgba(254, 240, 138, 0.96) 55%, rgba(253, 224, 71, 0.98) 100%);
+  border-radius: 12px;
+  box-shadow:
+    0 24px 60px rgba(2, 6, 23, 0.22),
+    0 0 0 1px rgba(161, 98, 7, 0.22);
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transform: rotate(-0.35deg);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  touch-action: none; /* allow smooth drag on mobile */
+}
+
+.postit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  background: radial-gradient(140px 80px at 12% 18%, rgba(255, 255, 255, 0.55), transparent 65%);
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+}
+
+.postit:hover {
+  transform: rotate(0deg) translateY(-2px);
+  box-shadow:
+    0 28px 70px rgba(2, 6, 23, 0.26),
+    0 0 0 1px rgba(161, 98, 7, 0.25);
+}
+
+.postit:active {
+  cursor: grabbing;
+  transform: rotate(0deg) translateY(-1px) scale(1.01);
+}
+
+.postit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: rgba(113, 63, 18, 0.95);
+}
+
+.postit-author {
+  font-weight: 600;
+}
+
+.postit-date {
+  color: #a16207;
+}
+
+.postit-body {
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.icon-button {
+  border: none;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  font-size: 0.8rem;
+  opacity: 0.95;
+  border-radius: 10px;
+  padding: 0.15rem 0.35rem;
+  transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
+}
+
+.icon-button:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.55);
+  transform: translateY(-1px);
+}
+
+.flash {
+  position: absolute;
+  right: 1rem;
+  top: 0.75rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  z-index: 999;
+  box-shadow: 0 16px 50px rgba(2, 6, 23, 0.18);
+}
+
+.flash-error {
+  background: rgba(185, 28, 28, 0.9);
+  color: #fee2e2;
+}
+
+.flash-success {
+  background: rgba(22, 163, 74, 0.92);
+  color: #dcfce7;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.52);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  width: min(420px, 92vw);
+  background: white;
+  border-radius: 1rem;
+  padding: 1rem 1.2rem 0.9rem;
+  box-shadow:
+    0 30px 90px rgba(2, 6, 23, 0.45),
+    0 0 0 1px rgba(148, 163, 184, 0.55);
+  transform: translateY(0);
+  animation: pop 120ms ease-out;
+}
+
+@keyframes pop {
+  from {
+    transform: translateY(6px) scale(0.99);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.modal-content h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.1rem;
+}
+
+#postit-text {
+  width: 100%;
+  resize: vertical;
+  min-height: 90px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(900px 500px at 20% 15%, rgba(59, 130, 246, 0.20), transparent 55%),
+    radial-gradient(900px 600px at 80% 30%, rgba(236, 72, 153, 0.14), transparent 55%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+}
+
+.auth-card {
+  width: min(420px, 92vw);
+  background: white;
+  border-radius: 1rem;
+  padding: 1.5rem 1.75rem 1.25rem;
+  box-shadow:
+    0 30px 90px rgba(2, 6, 23, 0.35),
+    0 0 0 1px rgba(148, 163, 184, 0.55);
+}
+
+.auth-card h1 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.signup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-bottom: 0.75rem;
+}
+
+.signup-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .board {
+    height: calc(100vh - 48px);
+  }
+
+  .top-bar {
+    padding: 0.5rem 0.6rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+
+  .login-form {
+    width: 100%;
+  }
+
+  .board-switcher {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  #board-search {
+    width: 100%;
+    flex: 1;
+  }
+
+  .postit {
+    width: 180px;
+    min-height: 120px;
+  }
+}
+
