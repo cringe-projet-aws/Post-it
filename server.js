@@ -1,465 +1,512 @@
-require("dotenv").config();
-const path = require("path");
-const express = require("express");
-const session = require("express-session");
-const SQLiteStore = require("connect-sqlite3")(session);
-const bcrypt = require("bcryptjs");
-const helmet = require("helmet");
-const flash = require("connect-flash");
-const sqlite3 = require("sqlite3").verbose();
+require('dotenv').config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const express = require('express');
+var app = express();
+const path = require('path');
+const https = require('https');
+const http = require('http');
+const fs = require('fs');
+const bcrypt = require('bcryptjs');
+var session = require('express-session');
+const helmet = require('helmet');
+var csrf = require('csurf');
+var flash = require('connect-flash');
+const rateLimit = require('express-rate-limit');
+const db = require('./db');
 
-// Database setup (SQLite for simplicity)
-const db = new sqlite3.Database(path.join(__dirname, "postits.db"));
+var PORT = process.env.PORT || 3000;
 
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'user', -- user, admin, guest
-      can_create INTEGER NOT NULL DEFAULT 1,
-      can_edit INTEGER NOT NULL DEFAULT 1,
-      can_delete INTEGER NOT NULL DEFAULT 1,
-      can_admin INTEGER NOT NULL DEFAULT 0
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS postits (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      text TEXT NOT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      x INTEGER NOT NULL,
-      y INTEGER NOT NULL,
-      z_index INTEGER NOT NULL DEFAULT 0,
-      author_id INTEGER NOT NULL,
-      board TEXT NOT NULL DEFAULT 'default',
-      FOREIGN KEY (author_id) REFERENCES users(id)
-    )
-  `);
-
-  // Create special guest user if not exists
-  db.run(
-    `INSERT OR IGNORE INTO users (username, password_hash, role, can_create, can_edit, can_delete, can_admin)
-     VALUES ('guest', '', 'guest', 0, 0, 0, 0)`,
-  );
-
-  // Pre-configure admin user (and remove other admins created manually)
-  // Admin credentials:
-  // username: admin
-  // password: admin123*
-  const adminHash = bcrypt.hashSync("admin123*", 10);
-
-  // Delete any other admins (keep 'admin' and 'guest')
-  db.run(`DELETE FROM users WHERE role = 'admin' AND username <> 'admin'`);
-
-  // Ensure 'admin' exists and has admin rights
-  db.run(
-    `
-    INSERT OR IGNORE INTO users (username, password_hash, role, can_create, can_edit, can_delete, can_admin)
-    VALUES ('admin', ?, 'admin', 1, 1, 1, 1)
-  `,
-    [adminHash],
-  );
-
-  // If 'admin' already exists, force-update its password and rights
-  db.run(
-    `
-    UPDATE users
-    SET password_hash = ?,
-        role = 'admin',
-        can_create = 1,
-        can_edit = 1,
-        can_delete = 1,
-        can_admin = 1
-    WHERE username = 'admin'
-  `,
-    [adminHash],
-  );
-});
-
-// View engine & static files
-app.set("view engine", "ejs");
-app.set("views", path.join(__dirname, "views"));
-app.use(express.static(path.join(__dirname, "public")));
-
-// Security & parsing
-// Note: Helmet active CSP blocks inline scripts; we use a tiny inline script
-// to expose CURRENT_USER to the client, so we disable CSP for this project.
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-  }),
-);
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-
-// Sessions
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "dev-secret-change-me",
-    resave: false,
-    saveUninitialized: false,
-    store: new SQLiteStore({ db: "sessions.db", dir: __dirname }),
-    cookie: {
-      httpOnly: true,
-      sameSite: "lax",
-    },
-  }),
-);
-
-app.use(flash());
-
-// Expose user & flashes to all views
-app.use((req, res, next) => {
-  res.locals.currentUser = req.session.user || null;
-  res.locals.messages = {
-    error: req.flash("error"),
-    success: req.flash("success"),
-  };
-  next();
-});
-
-// Middleware helpers
-function requireAuth(req, res, next) {
-  if (!req.session.user) {
-    if (req.xhr || req.headers.accept?.includes("application/json")) {
-      return res.status(401).json({ ok: false, error: "AUTH_REQUIRED" });
-    }
-    req.flash("error", "Vous devez être connecté.");
-    return res.redirect("/");
-  }
-  next();
+// vérifier si les certificats SSL existent
+var certOptions = null;
+try {
+    certOptions = {
+        key: fs.readFileSync(path.join(__dirname, 'certs', 'server.key')),
+        cert: fs.readFileSync(path.join(__dirname, 'certs', 'server.cert'))
+    };
+    console.log('Certificats SSL trouvés, HTTPS activé');
+} catch(e) {
+    console.log('Pas de certificats SSL - mode HTTP (développement)');
 }
 
-// Routes
+// configuration du moteur de vues
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
 
-// GET /signup - registration form
-app.get("/signup", (req, res) => {
-  res.render("signup");
+// fichiers statiques (CSS, JS client)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// entêtes de sécurité HTTP avec Helmet
+// on désactive CSP pour autoriser les scripts inline
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// parser les données des formulaires POST
+app.use(express.urlencoded({ extended: false }));
+// parser le JSON (pour les requêtes AJAX)
+app.use(express.json());
+
+// configuration des sessions
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'changez_ce_secret_en_production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        secure: certOptions !== null,
+        sameSite: 'strict',
+        maxAge: 1000 * 60 * 60 * 8
+    }
+}));
+
+// protection CSRF (après la session)
+app.use(csrf());
+
+// messages flash (erreurs, succès)
+app.use(flash());
+
+// rendre les variables disponibles dans tous les templates EJS
+app.use(function(req, res, next) {
+    res.locals.user = req.session.user || null;
+    res.locals.csrfToken = req.csrfToken();
+    res.locals.erreur = req.flash('erreur');
+    res.locals.succes = req.flash('succes');
+    next();
 });
 
-// POST /signup - create user
-app.post("/signup", (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    req.flash("error", "Nom d’utilisateur et mot de passe requis.");
-    return res.redirect("/signup");
-  }
-
-  const hash = bcrypt.hashSync(password, 10);
-  db.run(
-    `INSERT INTO users (username, password_hash) VALUES (?, ?)`,
-    [username, hash],
-    function (err) {
-      if (err) {
-        console.error(err);
-        req.flash(
-          "error",
-          "Impossible de créer l'utilisateur (nom déjà utilisé ?)",
-        );
-        return res.redirect("/signup");
-      }
-      req.flash("success", "Compte créé, vous pouvez vous connecter.");
-      res.redirect("/");
-    },
-  );
+// anti brute-force sur la page de connexion
+var loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.'
 });
 
-// POST /login - login user
-app.post("/login", (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    req.flash("error", "Nom d’utilisateur et mot de passe requis.");
-    return res.redirect("/");
-  }
-
-  db.get(`SELECT * FROM users WHERE username = ?`, [username], (err, user) => {
-    if (err) {
-      console.error(err);
-      req.flash("error", "Erreur serveur.");
-      return res.redirect("/");
-    }
-    if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-      req.flash("error", "Identifiants invalides.");
-      return res.redirect("/");
-    }
-
-    // Store minimal user info in session
-    req.session.user = {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      can_create: !!user.can_create,
-      can_edit: !!user.can_edit,
-      can_delete: !!user.can_delete,
-      can_admin: !!user.can_admin,
-    };
-    req.flash("success", "Connecté avec succès.");
-    res.redirect("/");
-  });
-});
-
-// GET / - main page default board
-app.get("/", (req, res) => {
-  const board = "default";
-  db.all(
-    `
-    SELECT p.*, u.username AS author_name
-    FROM postits p
-    JOIN users u ON p.author_id = u.id
-    WHERE p.board = ?
-    ORDER BY p.z_index ASC, p.created_at ASC
-  `,
-    [board],
-    (err, rows) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).send("Erreur serveur");
-      }
-      res.render("index", { board, postits: rows });
-    },
-  );
-});
-
-// GET /logout - logout
-app.get("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.redirect("/");
-  });
-});
-
-// POST /ajouter - add post-it (AJAX)
-app.post("/ajouter", requireAuth, (req, res) => {
-  const user = req.session.user;
-  if (!user.can_create) {
-    return res.status(403).json({ ok: false, error: "NO_CREATE_PERMISSION" });
-  }
-
-  const { text, x, y, board } = req.body;
-  if (!text || x == null || y == null) {
-    return res.status(400).json({ ok: false, error: "MISSING_FIELDS" });
-  }
-
-  const boardName = board || "default";
-
-  // Compute next z_index
-  db.get(
-    `SELECT IFNULL(MAX(z_index), 0) + 1 AS next_z FROM postits WHERE board = ?`,
-    [boardName],
-    (err, row) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ ok: false, error: "DB_ERROR" });
-      }
-      const nextZ = row?.next_z || 1;
-      db.run(
-        `
-        INSERT INTO postits (text, x, y, z_index, author_id, board)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
-        [text, x, y, nextZ, user.id, boardName],
-        function (err2) {
-          if (err2) {
-            console.error(err2);
-            return res.status(500).json({ ok: false, error: "DB_ERROR" });
-          }
-
-          db.get(
-            `
-            SELECT p.*, u.username AS author_name
-            FROM postits p
-            JOIN users u ON p.author_id = u.id
-            WHERE p.id = ?
-          `,
-            [this.lastID],
-            (err3, newPostit) => {
-              if (err3) {
-                console.error(err3);
-                return res.status(500).json({ ok: false, error: "DB_ERROR" });
-              }
-              res.json({ ok: true, postit: newPostit });
-            },
-          );
-        },
-      );
-    },
-  );
-});
-
-// POST /effacer - delete post-it (AJAX)
-app.post("/effacer", requireAuth, (req, res) => {
-  const user = req.session.user;
-  if (!user.can_delete) {
-    return res.status(403).json({ ok: false, error: "NO_DELETE_PERMISSION" });
-  }
-  const { id } = req.body;
-  if (!id) {
-    return res.status(400).json({ ok: false, error: "MISSING_ID" });
-  }
-
-  db.get(`SELECT * FROM postits WHERE id = ?`, [id], (err, postit) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ ok: false, error: "DB_ERROR" });
-    }
-    if (!postit) {
-      return res.status(404).json({ ok: false, error: "NOT_FOUND" });
-    }
-
-    const isOwner = postit.author_id === user.id;
-    const isAdmin = user.can_admin || user.role === "admin";
-    if (!isOwner && !isAdmin) {
-      return res.status(403).json({ ok: false, error: "NOT_OWNER" });
-    }
-
-    db.run(`DELETE FROM postits WHERE id = ?`, [id], function (err2) {
-      if (err2) {
-        console.error(err2);
-        return res.status(500).json({ ok: false, error: "DB_ERROR" });
-      }
-      res.json({ ok: true });
-    });
-  });
-});
-
-// POST /modifier - edit post-it (AJAX)
-app.post("/modifier", requireAuth, (req, res) => {
-  const user = req.session.user;
-  if (!user.can_edit) {
-    return res.status(403).json({ ok: false, error: "NO_EDIT_PERMISSION" });
-  }
-  const { id, text } = req.body;
-  if (!id || !text) {
-    return res.status(400).json({ ok: false, error: "MISSING_FIELDS" });
-  }
-
-  db.get(`SELECT * FROM postits WHERE id = ?`, [id], (err, postit) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ ok: false, error: "DB_ERROR" });
-    }
-    if (!postit) {
-      return res.status(404).json({ ok: false, error: "NOT_FOUND" });
-    }
-    const isOwner = postit.author_id === user.id;
-    const isAdmin = user.can_admin || user.role === "admin";
-    if (!isOwner && !isAdmin) {
-      return res.status(403).json({ ok: false, error: "NOT_OWNER" });
-    }
-
-    db.run(
-      `UPDATE postits SET text = ? WHERE id = ?`,
-      [text, id],
-      function (err2) {
-        if (err2) {
-          console.error(err2);
-          return res.status(500).json({ ok: false, error: "DB_ERROR" });
+// vérifier si l'utilisateur est connecté
+function requireLogin(req, res, next) {
+    if (!req.session.user) {
+        var isAjax = req.headers['content-type'] && req.headers['content-type'].indexOf('application/json') != -1;
+        if (isAjax) {
+            return res.status(401).json({ ok: false, message: 'Non connecté' });
         }
-        res.json({ ok: true });
-      },
-    );
-  });
+        req.flash('erreur', 'Vous devez être connecté');
+        return res.redirect('/');
+    }
+    next();
+}
+
+// ========================
+//        ROUTES
+// ========================
+
+// page principale
+app.get('/', async function(req, res) {
+    try {
+        // récupérer tous les postits avec le nom de l'auteur
+        var postits = await db('postits')
+            .join('users', 'postits.auteur_id', 'users.id')
+            .select('postits.*', 'users.username as auteur_nom')
+            .orderBy('postits.z_index', 'asc')
+            .orderBy('postits.created_at', 'asc');
+
+        res.render('index', { postits: postits });
+    } catch(err) {
+        console.log('Erreur GET /:', err.message);
+        res.status(500).send('Erreur serveur');
+    }
 });
 
-// POST /deplacer - drag&drop move post-it (AJAX)
-app.post("/deplacer", requireAuth, (req, res) => {
-  const user = req.session.user;
-  const { id, x, y } = req.body;
-  if (!id || x == null || y == null) {
-    return res.status(400).json({ ok: false, error: "MISSING_FIELDS" });
-  }
+// page d'inscription
+app.get('/signup', function(req, res) {
+    if (req.session.user) {
+        return res.redirect('/');
+    }
+    res.render('signup');
+});
 
-  db.get(`SELECT * FROM postits WHERE id = ?`, [id], (err, postit) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ ok: false, error: "DB_ERROR" });
+// traitement de l'inscription
+app.post('/signup', async function(req, res) {
+    var username = (req.body.username || '').trim();
+    var password = req.body.password || '';
+    var confirm = req.body.confirm || '';
+
+    // vérifications de base
+    if (username.length < 3 || username.length > 30) {
+        req.flash('erreur', 'Le nom doit faire entre 3 et 30 caractères');
+        return res.redirect('/signup');
     }
-    if (!postit) {
-      return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        req.flash('erreur', 'Nom invalide : lettres, chiffres et _ seulement');
+        return res.redirect('/signup');
     }
-    const isOwner = postit.author_id === user.id;
-    const isAdmin = user.can_admin || user.role === "admin";
-    if (!isOwner && !isAdmin) {
-      return res.status(403).json({ ok: false, error: "NOT_OWNER" });
+    if (username.toLowerCase() === 'guest' || username.toLowerCase() === 'admin') {
+        req.flash('erreur', 'Ce nom est réservé');
+        return res.redirect('/signup');
+    }
+    // vérifier la longueur minimale
+    if (password.length < 8) {
+        req.flash('erreur', 'Mot de passe trop court (minimum 8 caractères)');
+        return res.redirect('/signup');
+    }
+    // vérifier qu'il y a au moins une lettre majuscule
+    if (!/[A-Z]/.test(password)) {
+        req.flash('erreur', 'Le mot de passe doit contenir au moins une majuscule');
+        return res.redirect('/signup');
+    }
+    // vérifier qu'il y a au moins une lettre minuscule
+    if (!/[a-z]/.test(password)) {
+        req.flash('erreur', 'Le mot de passe doit contenir au moins une minuscule');
+        return res.redirect('/signup');
+    }
+    // vérifier qu'il y a au moins un chiffre
+    if (!/[0-9]/.test(password)) {
+        req.flash('erreur', 'Le mot de passe doit contenir au moins un chiffre');
+        return res.redirect('/signup');
+    }
+    if (password !== confirm) {
+        req.flash('erreur', 'Les mots de passe ne correspondent pas');
+        return res.redirect('/signup');
     }
 
-    // New z_index on move
-    db.get(
-      `SELECT IFNULL(MAX(z_index), 0) + 1 AS next_z FROM postits WHERE board = ?`,
-      [postit.board],
-      (err2, row) => {
-        if (err2) {
-          console.error(err2);
-          return res.status(500).json({ ok: false, error: "DB_ERROR" });
+    try {
+        // vérifier que le nom n'est pas déjà utilisé
+        var existing = await db('users').where('username', username).first();
+        if (existing) {
+            req.flash('erreur', 'Ce nom d\'utilisateur est déjà pris');
+            return res.redirect('/signup');
         }
-        const nextZ = row?.next_z || 1;
-        db.run(
-          `UPDATE postits SET x = ?, y = ?, z_index = ? WHERE id = ?`,
-          [x, y, nextZ, id],
-          function (err3) {
-            if (err3) {
-              console.error(err3);
-              return res.status(500).json({ ok: false, error: "DB_ERROR" });
+
+        var hash = bcrypt.hashSync(password, 12);
+        await db('users').insert({
+            username: username,
+            password: hash,
+            can_create: 1,
+            can_edit: 1,
+            can_delete: 1,
+            can_admin: 0
+        });
+        req.flash('succes', 'Compte créé avec succès ! Connectez-vous.');
+        res.redirect('/');
+    } catch(err) {
+        console.log('Erreur inscription:', err.message);
+        req.flash('erreur', 'Erreur lors de la création du compte');
+        res.redirect('/signup');
+    }
+});
+
+// connexion
+app.post('/login', loginLimiter, async function(req, res) {
+    var username = (req.body.username || '').trim();
+    var password = req.body.password || '';
+
+    if (!username || !password) {
+        req.flash('erreur', 'Remplissez tous les champs');
+        return res.redirect('/');
+    }
+
+    try {
+        var user = await db('users').where('username', username).first();
+
+        // message d'erreur générique (on ne dit pas si le compte existe)
+        if (!user || user.username === 'guest') {
+            req.flash('erreur', 'Identifiants incorrects');
+            return res.redirect('/');
+        }
+
+        var mdpOk = bcrypt.compareSync(password, user.password);
+        if (!mdpOk) {
+            req.flash('erreur', 'Identifiants incorrects');
+            return res.redirect('/');
+        }
+
+        // régénérer l'ID de session pour éviter la fixation de session
+        req.session.regenerate(function(err) {
+            if (err) {
+                console.log('Erreur regenerate:', err);
+                req.flash('erreur', 'Erreur serveur');
+                return res.redirect('/');
             }
-            res.json({ ok: true });
-          },
-        );
-      },
-    );
-  });
+            req.session.user = {
+                id: user.id,
+                username: user.username,
+                can_create: user.can_create == 1,
+                can_edit: user.can_edit == 1,
+                can_delete: user.can_delete == 1,
+                can_admin: user.can_admin == 1
+            };
+            req.session.save(function(saveErr) {
+                res.redirect('/');
+            });
+        });
+    } catch(err) {
+        console.log('Erreur login:', err.message);
+        req.flash('erreur', 'Erreur serveur');
+        res.redirect('/');
+    }
 });
 
-// GET /liste - JSON list of post-its (AJAX)
-app.get("/liste/:board?", (req, res) => {
-  const board = req.params.board || "default";
-  db.all(
-    `
-    SELECT p.*, u.username AS author_name
-    FROM postits p
-    JOIN users u ON p.author_id = u.id
-    WHERE p.board = ?
-    ORDER BY p.z_index ASC, p.created_at ASC
-  `,
-    [board],
-    (err, rows) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ ok: false, error: "DB_ERROR" });
-      }
-      res.json({ ok: true, board, postits: rows });
-    },
-  );
+// déconnexion
+app.get('/logout', function(req, res) {
+    req.session.destroy(function(err) {
+        res.redirect('/');
+    });
 });
 
-// GET /:board - other boards (MUST be last, after all specific routes)
-app.get("/:board", (req, res) => {
-  const board = req.params.board || "default";
-  db.all(
-    `
-    SELECT p.*, u.username AS author_name
-    FROM postits p
-    JOIN users u ON p.author_id = u.id
-    WHERE p.board = ?
-    ORDER BY p.z_index ASC, p.created_at ASC
-  `,
-    [board],
-    (err, rows) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).send("Erreur serveur");
-      }
-      res.render("index", { board, postits: rows });
-    },
-  );
+// liste des postits en JSON (pour AJAX)
+app.get('/liste', async function(req, res) {
+    try {
+        var postits = await db('postits')
+            .join('users', 'postits.auteur_id', 'users.id')
+            .select('postits.*', 'users.username as auteur_nom')
+            .orderBy('postits.z_index', 'asc');
+        res.json({ ok: true, postits: postits });
+    } catch(err) {
+        console.log(err.message);
+        res.status(500).json({ ok: false });
+    }
 });
 
-// TODO: routes d’administration pour gérer les rôles (can_create, can_edit, can_delete, can_admin)
+// ajouter un postit (AJAX)
+app.post('/ajouter', requireLogin, async function(req, res) {
+    var user = req.session.user;
 
-app.listen(PORT, () => {
-  console.log(`Serveur démarré sur http://localhost:${PORT}`);
+    if (!user.can_create) {
+        return res.status(403).json({ ok: false, message: 'Vous n\'avez pas la permission de créer des postits' });
+    }
+
+    var texte = (req.body.texte || '').trim();
+    var x = parseInt(req.body.x) || 0;
+    var y = parseInt(req.body.y) || 0;
+
+    if (texte.length === 0) {
+        return res.status(400).json({ ok: false, message: 'Le texte est vide' });
+    }
+    if (texte.length > 500) {
+        return res.status(400).json({ ok: false, message: 'Texte trop long (500 caractères max)' });
+    }
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+
+    try {
+        // calculer le z_index pour afficher le nouveau postit au dessus
+        var res2 = await db('postits').max('z_index as max').first();
+        var nextZ = (res2.max || 0) + 1;
+
+        var newIds = await db('postits').insert({
+            texte: texte,
+            x: x,
+            y: y,
+            z_index: nextZ,
+            auteur_id: user.id
+        });
+
+        // récupérer le postit complet avec le nom de l'auteur
+        var nouveau = await db('postits')
+            .join('users', 'postits.auteur_id', 'users.id')
+            .select('postits.*', 'users.username as auteur_nom')
+            .where('postits.id', newIds[0])
+            .first();
+
+        res.json({ ok: true, postit: nouveau });
+    } catch(err) {
+        console.log('Erreur /ajouter:', err.message);
+        res.status(500).json({ ok: false });
+    }
 });
+
+// supprimer un postit (AJAX)
+app.post('/effacer', requireLogin, async function(req, res) {
+    var user = req.session.user;
+
+    if (!user.can_delete) {
+        return res.status(403).json({ ok: false, message: 'Pas la permission de supprimer' });
+    }
+
+    var id = parseInt(req.body.id);
+    if (!id || id <= 0) {
+        return res.status(400).json({ ok: false, message: 'ID invalide' });
+    }
+
+    try {
+        var postit = await db('postits').where('id', id).first();
+        if (!postit) {
+            return res.status(404).json({ ok: false, message: 'Postit introuvable' });
+        }
+        // vérifier que c'est son postit ou qu'il est admin
+        if (postit.auteur_id != user.id && !user.can_admin) {
+            return res.status(403).json({ ok: false, message: 'Ce postit ne vous appartient pas' });
+        }
+        await db('postits').where('id', id).del();
+        res.json({ ok: true });
+    } catch(err) {
+        console.log('Erreur /effacer:', err.message);
+        res.status(500).json({ ok: false });
+    }
+});
+
+// modifier le texte d'un postit (AJAX)
+app.post('/modifier', requireLogin, async function(req, res) {
+    var user = req.session.user;
+
+    if (!user.can_edit) {
+        return res.status(403).json({ ok: false, message: 'Pas la permission de modifier' });
+    }
+
+    var id = parseInt(req.body.id);
+    var texte = (req.body.texte || '').trim();
+
+    if (!id || id <= 0) {
+        return res.status(400).json({ ok: false, message: 'ID invalide' });
+    }
+    if (texte.length === 0 || texte.length > 500) {
+        return res.status(400).json({ ok: false, message: 'Texte invalide' });
+    }
+
+    try {
+        var postit = await db('postits').where('id', id).first();
+        if (!postit) {
+            return res.status(404).json({ ok: false, message: 'Postit introuvable' });
+        }
+        if (postit.auteur_id != user.id && !user.can_admin) {
+            return res.status(403).json({ ok: false, message: 'Ce postit ne vous appartient pas' });
+        }
+        await db('postits').where('id', id).update({ texte: texte });
+        res.json({ ok: true });
+    } catch(err) {
+        console.log('Erreur /modifier:', err.message);
+        res.status(500).json({ ok: false });
+    }
+});
+
+// déplacer un postit - drag and drop (AJAX)
+app.post('/deplacer', requireLogin, async function(req, res) {
+    var user = req.session.user;
+    var id = parseInt(req.body.id);
+    var x = parseInt(req.body.x);
+    var y = parseInt(req.body.y);
+
+    if (!id || isNaN(x) || isNaN(y)) {
+        return res.status(400).json({ ok: false, message: 'Données invalides' });
+    }
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+
+    try {
+        var postit = await db('postits').where('id', id).first();
+        if (!postit) {
+            return res.status(404).json({ ok: false });
+        }
+        if (postit.auteur_id != user.id && !user.can_admin) {
+            return res.status(403).json({ ok: false });
+        }
+        // passer en avant plan quand on déplace
+        var res3 = await db('postits').max('z_index as max').first();
+        var nextZ = (res3.max || 0) + 1;
+        await db('postits').where('id', id).update({ x: x, y: y, z_index: nextZ });
+        res.json({ ok: true });
+    } catch(err) {
+        console.log('Erreur /deplacer:', err.message);
+        res.status(500).json({ ok: false });
+    }
+});
+
+
+// ========================
+//    PAGE ADMINISTRATION
+// ========================
+
+app.get('/admin', requireLogin, async function(req, res) {
+    if (!req.session.user.can_admin) {
+        return res.status(403).send('Accès refusé - administrateurs uniquement');
+    }
+    try {
+        var users = await db('users').whereNot('username', 'guest').orderBy('id', 'asc');
+        res.render('admin', { users: users });
+    } catch(err) {
+        console.log('Erreur /admin:', err.message);
+        res.status(500).send('Erreur serveur');
+    }
+});
+
+app.post('/admin/update', requireLogin, async function(req, res) {
+    if (!req.session.user.can_admin) {
+        return res.status(403).send('Accès refusé');
+    }
+
+    var userId = parseInt(req.body.userId);
+    if (!userId || userId <= 0) {
+        req.flash('erreur', 'ID utilisateur invalide');
+        return res.redirect('/admin');
+    }
+
+    try {
+        var target = await db('users').where('id', userId).first();
+        if (!target || target.username === 'guest') {
+            req.flash('erreur', 'Impossible de modifier cet utilisateur');
+            return res.redirect('/admin');
+        }
+
+        var estSoi = userId == req.session.user.id;
+        var can_create = req.body.can_create ? 1 : 0;
+        var can_edit   = req.body.can_edit   ? 1 : 0;
+        var can_delete = req.body.can_delete ? 1 : 0;
+        // on ne peut pas se retirer ses propres droits admin
+        var can_admin  = estSoi ? 1 : (req.body.can_admin ? 1 : 0);
+
+        await db('users').where('id', userId).update({
+            can_create: can_create,
+            can_edit: can_edit,
+            can_delete: can_delete,
+            can_admin: can_admin
+        });
+
+        // mettre à jour la session si on modifie ses propres permissions
+        if (estSoi) {
+            req.session.user.can_create = can_create == 1;
+            req.session.user.can_edit = can_edit == 1;
+            req.session.user.can_delete = can_delete == 1;
+        }
+
+        req.flash('succes', 'Permissions de ' + target.username + ' mises à jour');
+        res.redirect('/admin');
+    } catch(err) {
+        console.log('Erreur /admin/update:', err.message);
+        req.flash('erreur', 'Erreur lors de la mise à jour');
+        res.redirect('/admin');
+    }
+});
+
+
+// gestionnaire d'erreur global (doit être après toutes les routes)
+app.use(function(err, req, res, next) {
+    if (err.code === 'EBADCSRFTOKEN') {
+        var isAjax = req.headers['content-type'] && req.headers['content-type'].indexOf('application/json') != -1;
+        if (isAjax) {
+            return res.status(403).json({ ok: false, message: 'Token invalide, rechargez la page' });
+        }
+        return res.status(403).send('Requête invalide - rechargez la page');
+    }
+    console.log('Erreur non gérée:', err.message);
+    res.status(500).send('Erreur serveur');
+});
+
+
+// ========================
+//   DÉMARRAGE DU SERVEUR
+// ========================
+
+if (certOptions) {
+    // lancer en HTTPS
+    https.createServer(certOptions, app).listen(PORT, function() {
+        console.log('Serveur HTTPS démarré sur https://localhost:' + PORT);
+    });
+    // rediriger les connexions HTTP vers HTTPS
+    http.createServer(function(req, res) {
+        var host = req.headers.host ? req.headers.host.split(':')[0] : 'localhost';
+        res.writeHead(301, { 'Location': 'https://' + host + ':' + PORT + req.url });
+        res.end();
+    }).listen(3001, function() {
+        console.log('Redirection HTTP (port 3001) -> HTTPS (port ' + PORT + ')');
+    });
+} else {
+    app.listen(PORT, function() {
+        console.log('Serveur démarré sur http://localhost:' + PORT);
+    });
+}

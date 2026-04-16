@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Administration - Post-its</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page-auth">
+
+<div class="carte-admin">
+    <div class="admin-header">
+        <h1>Administration</h1>
+        <a href="/" class="btn btn-secondary">Retour au tableau</a>
+    </div>
+
+    <% if (erreur && erreur.length > 0) { %>
+        <div class="flash flash-erreur">
+            <% erreur.forEach(function(m) { %><div><%= m %></div><% }); %>
+        </div>
+    <% } %>
+    <% if (succes && succes.length > 0) { %>
+        <div class="flash flash-succes">
+            <% succes.forEach(function(m) { %><div><%= m %></div><% }); %>
+        </div>
+    <% } %>
+
+    <p>Gérez ici les permissions des utilisateurs.</p>
+    <p><small>Les permissions sont : <strong>Créer</strong> des post-its, <strong>Modifier</strong> ses post-its, <strong>Supprimer</strong> ses post-its, <strong>Admin</strong> (droits sur tout le monde + accès à cette page).</small></p>
+
+    <% if (users.length == 0) { %>
+        <p>Aucun utilisateur.</p>
+    <% } %>
+
+    <% users.forEach(function(u) { %>
+        <div class="ligne-user">
+            <form action="/admin/update" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="userId" value="<%= u.id %>">
+
+                <div class="user-infos">
+                    <strong class="user-nom"><%= u.username %></strong>
+                    <span class="user-id">#<%= u.id %></span>
+                </div>
+
+                <div class="user-permissions">
+                    <label>
+                        <input type="checkbox" name="can_create" <%= u.can_create ? 'checked' : '' %>>
+                        Créer
+                    </label>
+                    <label>
+                        <input type="checkbox" name="can_edit" <%= u.can_edit ? 'checked' : '' %>>
+                        Modifier
+                    </label>
+                    <label>
+                        <input type="checkbox" name="can_delete" <%= u.can_delete ? 'checked' : '' %>>
+                        Supprimer
+                    </label>
+                    <label>
+                        <input type="checkbox" name="can_admin" <%= u.can_admin ? 'checked' : '' %>>
+                        Admin
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-petit">Sauvegarder</button>
+            </form>
+        </div>
+    <% }); %>
+</div>
+
+</body>
+</html>

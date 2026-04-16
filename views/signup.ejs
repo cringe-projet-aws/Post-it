@@ -1,44 +1,50 @@
 <!DOCTYPE html>
 <html lang="fr">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Inscription - Post-it sociaux</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" href="/css/style.css" />
-  </head>
-  <body class="auth-page">
-    <div class="auth-card">
-      <h1>Créer un compte</h1>
+<head>
+    <meta charset="UTF-8">
+    <title>Inscription - Post-its</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="page-auth">
 
-      <% if (messages.error && messages.error.length) { %>
-      <div class="flash flash-error">
-        <% messages.error.forEach(function(m) { %>
-        <div><%= m %></div>
-        <% }); %>
-      </div>
-      <% } %>
-      <% if (messages.success && messages.success.length) { %>
-      <div class="flash flash-success">
-        <% messages.success.forEach(function(m) { %>
-        <div><%= m %></div>
-        <% }); %>
-      </div>
-      <% } %>
+<div class="carte-auth">
+    <h1>Créer un compte</h1>
 
-      <form action="/signup" method="post" class="signup-form">
-        <label>
-          Nom d’utilisateur
-          <input type="text" name="username" required />
-        </label>
-        <label>
-          Mot de passe
-          <input type="password" name="password" required />
-        </label>
-        <button type="submit" class="btn btn-primary">S’inscrire</button>
-      </form>
+    <% if (erreur && erreur.length > 0) { %>
+        <div class="flash flash-erreur">
+            <% erreur.forEach(function(m) { %><div><%= m %></div><% }); %>
+        </div>
+    <% } %>
+    <% if (succes && succes.length > 0) { %>
+        <div class="flash flash-succes">
+            <% succes.forEach(function(m) { %><div><%= m %></div><% }); %>
+        </div>
+    <% } %>
 
-      <a href="/" class="link-small">Retour au tableau</a>
-    </div>
-  </body>
+    <form action="/signup" method="POST" class="form-signup">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+        <label for="username">Nom d'utilisateur</label>
+        <input type="text" id="username" name="username"
+               placeholder="Lettres, chiffres et _ (3-30 caractères)"
+               required minlength="3" maxlength="30" autocomplete="off">
+
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password"
+               placeholder="Min. 8 car., 1 majuscule, 1 chiffre"
+               required minlength="8">
+
+        <label for="confirm">Confirmer le mot de passe</label>
+        <input type="password" id="confirm" name="confirm"
+               placeholder="Répétez le mot de passe"
+               required minlength="8">
+
+        <button type="submit" class="btn btn-primary">S'inscrire</button>
+    </form>
+
+    <a href="/" class="lien-petit">Retour à l'accueil</a>
+</div>
+
+</body>
 </html>
-

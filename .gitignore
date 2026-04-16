@@ -9,13 +9,14 @@ yarn-error.log*
 .env.local
 .env.*.local
 
-# Fichiers de base de données
+# Fichiers de base de données SQLite
 *.db
 *.sqlite
 *.sqlite3
 
-# Fichiers de session
-sessions.db
+# Certificats SSL (ne pas commiter la clé privée!)
+certs/server.key
+certs/server.cert
 
 # Logs
 logs/

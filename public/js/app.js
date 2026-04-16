@@ -1,449 +1,386 @@
-(() => {
-  const boardEl = document.getElementById('board');
-  if (!boardEl) return;
+// variables globales pour le drag and drop
+var postitEnCours = null;
+var offsetX = 0;
+var offsetY = 0;
 
-  const topBarEl = document.querySelector('.top-bar');
-  const boardSwitcherForm = document.querySelector('.board-switcher');
-  const boardSearchInput = document.getElementById('board-search');
+// pour la détection du double-tap sur mobile
+var lastTap = 0;
+var lastTapX = 0;
+var lastTapY = 0;
 
-  const modal = document.getElementById('postit-modal');
-  const modalTitle = document.getElementById('modal-title');
-  const modalText = document.getElementById('postit-text');
-  const modalCancel = document.getElementById('modal-cancel');
-  const modalSave = document.getElementById('modal-save');
+// pour la création d'un postit
+var coordX = 0;
+var coordY = 0;
 
-  let currentAction = null; // 'create' | 'edit'
-  let currentPostitId = null;
-  let createCoords = { x: 100, y: 100 };
-  let lastTap = { t: 0, x: 0, y: 0 };
-  let clampTimer = null;
-  let lastBoardSize = { w: 0, h: 0 };
+// action en cours dans le modal: 'creer' ou 'modifier'
+var actionModal = '';
+var idPostitModal = null;
 
-  function isLoggedIn() {
-    return !!window.CURRENT_USER;
-  }
+var tableau = document.getElementById('tableau');
+var modal = document.getElementById('modal');
 
-  function normalizeBoardName(raw) {
-    const s = String(raw || '').trim();
-    // Keep simple URL-safe board IDs: letters, digits, underscore, dash
-    const cleaned = s.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9_-]/g, '');
-    return cleaned;
-  }
+// ouvrir le modal
+function ouvrirModal(action, id, texteActuel) {
+    actionModal = action;
+    idPostitModal = id || null;
 
-  if (boardSwitcherForm && boardSearchInput) {
-    // Prefill with current board for convenience
-    if (window.CURRENT_BOARD && window.CURRENT_BOARD !== 'default') {
-      boardSearchInput.placeholder = `Aller au tableau… (ex: ${window.CURRENT_BOARD})`;
+    if (action == 'creer') {
+        document.getElementById('modal-titre').textContent = 'Nouveau post-it';
+        document.getElementById('modal-texte').value = '';
+    } else {
+        document.getElementById('modal-titre').textContent = 'Modifier le post-it';
+        document.getElementById('modal-texte').value = texteActuel || '';
     }
+    document.getElementById('compteur-chars').textContent = document.getElementById('modal-texte').value.length + ' / 500';
+    modal.style.display = 'flex';
+    document.getElementById('modal-texte').focus();
+}
 
-    boardSwitcherForm.addEventListener('submit', e => {
-      e.preventDefault();
-      const name = normalizeBoardName(boardSearchInput.value);
-      if (!name || name === 'default') {
-        window.location.assign('/');
+// fermer le modal
+function fermerModal() {
+    modal.style.display = 'none';
+    actionModal = '';
+    idPostitModal = null;
+}
+
+// compter les caractères dans le textarea
+document.getElementById('modal-texte').addEventListener('input', function() {
+    document.getElementById('compteur-chars').textContent = this.value.length + ' / 500';
+});
+
+// bouton annuler
+document.getElementById('modal-annuler').addEventListener('click', function() {
+    fermerModal();
+});
+
+// fermer si on clique en dehors du modal
+modal.addEventListener('click', function(e) {
+    if (e.target === modal) {
+        fermerModal();
+    }
+});
+
+// touche Échap pour fermer
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        fermerModal();
+    }
+});
+
+// bouton sauvegarder
+document.getElementById('modal-sauver').addEventListener('click', function() {
+    var texte = document.getElementById('modal-texte').value.trim();
+    if (texte.length == 0) {
+        alert('Le texte ne peut pas être vide');
         return;
-      }
-      window.location.assign(`/${encodeURIComponent(name)}`);
-    });
-  }
-
-  function syncTopBarHeightVar() {
-    const h = topBarEl ? topBarEl.getBoundingClientRect().height : 56;
-    document.documentElement.style.setProperty('--topbar-h', `${Math.round(h)}px`);
-  }
-
-  syncTopBarHeightVar();
-  window.addEventListener('resize', syncTopBarHeightVar);
-
-  function clampPostitIntoBoard(postitEl, { allowRestoreOriginal }) {
-    const boardRect = boardEl.getBoundingClientRect();
-    const elRect = postitEl.getBoundingClientRect();
-
-    const w = elRect.width || 210;
-    const h = elRect.height || 140;
-
-    let left = parseInt(postitEl.style.left || '0', 10);
-    let top = parseInt(postitEl.style.top || '0', 10);
-
-    const maxLeft = Math.max(0, Math.floor(boardRect.width - w));
-    const maxTop = Math.max(0, Math.floor(boardRect.height - h));
-
-    if (allowRestoreOriginal && postitEl.dataset.origX != null && postitEl.dataset.origY != null) {
-      const origX = parseInt(postitEl.dataset.origX, 10);
-      const origY = parseInt(postitEl.dataset.origY, 10);
-      const fits =
-        Number.isFinite(origX) &&
-        Number.isFinite(origY) &&
-        origX >= 0 &&
-        origY >= 0 &&
-        origX <= maxLeft &&
-        origY <= maxTop;
-      if (fits) {
-        postitEl.style.left = `${origX}px`;
-        postitEl.style.top = `${origY}px`;
-        delete postitEl.dataset.origX;
-        delete postitEl.dataset.origY;
-        return { changed: true, x: origX, y: origY, restored: true };
-      }
+    }
+    if (texte.length > 500) {
+        alert('Texte trop long (500 caractères maximum)');
+        return;
     }
 
-    const clampedLeft = Math.min(Math.max(0, left), maxLeft);
-    const clampedTop = Math.min(Math.max(0, top), maxTop);
-
-    const changed = clampedLeft !== left || clampedTop !== top;
-    if (changed) {
-      // Save original position once, so we can restore it when screen grows again
-      if (postitEl.dataset.origX == null) postitEl.dataset.origX = String(left);
-      if (postitEl.dataset.origY == null) postitEl.dataset.origY = String(top);
-      postitEl.style.left = `${clampedLeft}px`;
-      postitEl.style.top = `${clampedTop}px`;
+    if (actionModal == 'creer') {
+        creerPostit(texte, coordX, coordY);
+    } else if (actionModal == 'modifier') {
+        modifierPostit(idPostitModal, texte);
     }
-    return { changed, x: clampedLeft, y: clampedTop, restored: false };
-  }
+    fermerModal();
+});
 
-  function clampAllPostits({ allowRestoreOriginal }) {
-    const postits = Array.from(boardEl.querySelectorAll('.postit'));
-    for (const el of postits) {
-      clampPostitIntoBoard(el, { allowRestoreOriginal });
+// double-clic sur le tableau pour créer un postit
+tableau.addEventListener('dblclick', function(e) {
+    if (!CURRENT_USER) {
+        alert('Vous devez être connecté pour créer un post-it');
+        return;
     }
-  }
-
-  function scheduleClampAll() {
-    if (clampTimer) clearTimeout(clampTimer);
-    clampTimer = setTimeout(() => {
-      clampTimer = null;
-      const rect = boardEl.getBoundingClientRect();
-      const grew =
-        (lastBoardSize.w && rect.width > lastBoardSize.w) || (lastBoardSize.h && rect.height > lastBoardSize.h);
-      lastBoardSize = { w: rect.width, h: rect.height };
-      clampAllPostits({ allowRestoreOriginal: grew });
-    }, 180);
-  }
-
-  window.addEventListener('resize', scheduleClampAll);
-  window.addEventListener('orientationchange', scheduleClampAll);
-
-  function openModal(action, options = {}) {
-    currentAction = action;
-    currentPostitId = options.id || null;
-    if (action === 'create') {
-      modalTitle.textContent = 'Nouveau post-it';
-      modalText.value = '';
-    } else if (action === 'edit') {
-      modalTitle.textContent = 'Modifier le post-it';
-      modalText.value = options.text || '';
+    if (!CURRENT_USER.can_create) {
+        alert('Vous n\'avez pas la permission de créer des post-its');
+        return;
     }
-    modal.classList.remove('hidden');
-    modalText.focus();
-  }
+    // ne pas déclencher sur les boutons
+    if (e.target.classList.contains('btn-icone')) return;
+    if (e.target.closest && e.target.closest('.postit')) return;
 
-  function closeModal() {
-    modal.classList.add('hidden');
-    currentAction = null;
-    currentPostitId = null;
-  }
+    var rect = tableau.getBoundingClientRect();
+    coordX = e.clientX - rect.left - 100;
+    coordY = e.clientY - rect.top - 50;
+    if (coordX < 0) coordX = 0;
+    if (coordY < 0) coordY = 0;
 
-  modalCancel?.addEventListener('click', () => {
-    closeModal();
-  });
+    ouvrirModal('creer', null, '');
+});
 
-  modalSave?.addEventListener('click', async () => {
-    const text = modalText.value.trim();
-    if (!text) {
-      alert('Le texte ne peut pas être vide.');
-      return;
-    }
-    if (currentAction === 'create') {
-      await createPostit({ text, ...createCoords });
-    } else if (currentAction === 'edit' && currentPostitId != null) {
-      await editPostit(currentPostitId, text);
-    }
-    closeModal();
-  });
+// double-tap sur mobile pour créer un postit
+tableau.addEventListener('touchend', function(e) {
+    if (!CURRENT_USER || !CURRENT_USER.can_create) return;
+    if (e.target.closest && e.target.closest('.postit')) return;
+    if (e.changedTouches.length != 1) return;
 
-  window.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
-      closeModal();
-    }
-  });
+    var maintenant = Date.now();
+    var touch = e.changedTouches[0];
+    var rect = tableau.getBoundingClientRect();
+    var tx = touch.clientX - rect.left;
+    var ty = touch.clientY - rect.top;
 
-  if (!modal.classList.contains('hidden')) {
-    modal.addEventListener('click', e => {
-      if (e.target === modal) closeModal();
-    });
-  }
+    var delai = maintenant - lastTap;
+    var dx = Math.abs(tx - lastTapX);
+    var dy = Math.abs(ty - lastTapY);
 
-  boardEl.addEventListener('dblclick', e => {
-    if (!isLoggedIn()) {
-      alert('Vous devez être connecté pour créer un post-it.');
-      return;
-    }
-    const rect = boardEl.getBoundingClientRect();
-    const rawX = e.clientX - rect.left - 100;
-    const rawY = e.clientY - rect.top - 50;
-    const maxX = Math.max(0, Math.floor(rect.width - 210));
-    const maxY = Math.max(0, Math.floor(rect.height - 140));
-    createCoords = {
-      x: Math.min(Math.max(0, rawX), maxX),
-      y: Math.min(Math.max(0, rawY), maxY)
-    };
-    openModal('create');
-  });
+    lastTap = maintenant;
+    lastTapX = tx;
+    lastTapY = ty;
 
-  // Mobile: double-tap to create (dblclick doesn't reliably fire on touch)
-  boardEl.addEventListener(
-    'touchend',
-    e => {
-      if (e.changedTouches?.length !== 1) return;
-      if (!isLoggedIn()) return;
-      // If user is dragging a post-it, don't treat it as board tap
-      if (e.target && e.target.closest && e.target.closest('.postit')) return;
-
-      const now = Date.now();
-      const touch = e.changedTouches[0];
-      const rect = boardEl.getBoundingClientRect();
-      const x = touch.clientX - rect.left;
-      const y = touch.clientY - rect.top;
-
-      const dt = now - lastTap.t;
-      const dx = Math.abs(x - lastTap.x);
-      const dy = Math.abs(y - lastTap.y);
-
-      lastTap = { t: now, x, y };
-
-      if (dt > 0 && dt < 320 && dx < 22 && dy < 22) {
-        const maxX = Math.max(0, Math.floor(rect.width - 210));
-        const maxY = Math.max(0, Math.floor(rect.height - 140));
-        createCoords = {
-          x: Math.min(Math.max(0, x - 100), maxX),
-          y: Math.min(Math.max(0, y - 50), maxY)
-        };
-        openModal('create');
+    // double tap = deux taps en moins de 300ms au même endroit
+    if (delai > 0 && delai < 300 && dx < 20 && dy < 20) {
+        coordX = tx - 100;
+        coordY = ty - 50;
+        if (coordX < 0) coordX = 0;
+        if (coordY < 0) coordY = 0;
+        ouvrirModal('creer', null, '');
         e.preventDefault();
-      }
-    },
-    { passive: false }
-  );
-
-  async function createPostit({ text, x, y }) {
-    try {
-      const res = await fetch('/ajouter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          x: Math.round(x),
-          y: Math.round(y),
-          board: boardEl.dataset.board || 'default'
-        })
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        alert('Erreur lors de la création: ' + (data.error || 'INCONNUE'));
-        return;
-      }
-      addPostitElement(data.postit);
-    } catch (err) {
-      console.error(err);
-      alert('Erreur réseau lors de la création.');
     }
-  }
+}, { passive: false });
 
-  async function editPostit(id, text) {
-    try {
-      const res = await fetch('/modifier', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, text })
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        alert('Erreur lors de la modification: ' + (data.error || 'INCONNUE'));
+// gérer les clics sur les boutons modifier et supprimer
+tableau.addEventListener('click', function(e) {
+    // bouton supprimer
+    if (e.target.classList.contains('btn-supprimer') || e.target.closest('.btn-supprimer')) {
+        var btn = e.target.classList.contains('btn-supprimer') ? e.target : e.target.closest('.btn-supprimer');
+        var postit = btn.closest('.postit');
+        if (!postit) return;
+        var id = postit.dataset.id;
+        supprimerPostit(id);
         return;
-      }
-      const el = boardEl.querySelector(`.postit[data-id="${id}"] .postit-body`);
-      if (el) el.textContent = text;
-    } catch (err) {
-      console.error(err);
-      alert('Erreur réseau lors de la modification.');
     }
-  }
-
-  async function deletePostit(id) {
-    if (!confirm('Supprimer ce post-it ?')) return;
-    try {
-      const res = await fetch('/effacer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        alert('Erreur lors de la suppression: ' + (data.error || 'INCONNUE'));
+    // bouton modifier
+    if (e.target.classList.contains('btn-modifier') || e.target.closest('.btn-modifier')) {
+        var btn2 = e.target.classList.contains('btn-modifier') ? e.target : e.target.closest('.btn-modifier');
+        var postit2 = btn2.closest('.postit');
+        if (!postit2) return;
+        var id2 = postit2.dataset.id;
+        var texteActuel = postit2.querySelector('.postit-texte').textContent;
+        ouvrirModal('modifier', id2, texteActuel);
         return;
-      }
-      const el = boardEl.querySelector(`.postit[data-id="${id}"]`);
-      if (el) el.remove();
-    } catch (err) {
-      console.error(err);
-      alert('Erreur réseau lors de la suppression.');
     }
-  }
+});
 
-  function addPostitElement(p) {
-    const div = document.createElement('div');
+// créer un postit via AJAX
+function creerPostit(texte, x, y) {
+    fetch('/ajouter', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CSRF_TOKEN
+        },
+        body: JSON.stringify({ texte: texte, x: Math.round(x), y: Math.round(y) })
+    })
+    .then(function(response) {
+        return response.json();
+    })
+    .then(function(data) {
+        if (!data.ok) {
+            alert('Erreur: ' + (data.message || 'impossible de créer le postit'));
+            return;
+        }
+        // ajouter le postit dans la page
+        ajouterElementPostit(data.postit);
+    })
+    .catch(function(err) {
+        console.log('Erreur réseau:', err);
+        alert('Erreur réseau, réessayez');
+    });
+}
+
+// modifier un postit via AJAX
+function modifierPostit(id, texte) {
+    fetch('/modifier', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CSRF_TOKEN
+        },
+        body: JSON.stringify({ id: id, texte: texte })
+    })
+    .then(function(response) {
+        return response.json();
+    })
+    .then(function(data) {
+        if (!data.ok) {
+            alert('Erreur: ' + (data.message || 'impossible de modifier'));
+            return;
+        }
+        // mettre à jour le texte dans la page
+        var el = document.querySelector('#postit-' + id + ' .postit-texte');
+        if (el) {
+            el.textContent = texte;
+        }
+    })
+    .catch(function(err) {
+        console.log('Erreur réseau:', err);
+        alert('Erreur réseau');
+    });
+}
+
+// supprimer un postit via AJAX
+function supprimerPostit(id) {
+    var ok = confirm('Voulez-vous vraiment supprimer ce post-it ?');
+    if (!ok) return;
+
+    fetch('/effacer', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CSRF_TOKEN
+        },
+        body: JSON.stringify({ id: id })
+    })
+    .then(function(response) {
+        return response.json();
+    })
+    .then(function(data) {
+        if (!data.ok) {
+            alert('Erreur: ' + (data.message || 'impossible de supprimer'));
+            return;
+        }
+        // enlever le postit de la page
+        var el = document.getElementById('postit-' + id);
+        if (el) {
+            el.remove();
+        }
+    })
+    .catch(function(err) {
+        console.log('Erreur réseau:', err);
+        alert('Erreur réseau');
+    });
+}
+
+// créer l'élément HTML pour un postit et l'ajouter au tableau
+function ajouterElementPostit(p) {
+    var div = document.createElement('div');
     div.className = 'postit';
+    div.id = 'postit-' + p.id;
     div.dataset.id = p.id;
-    div.dataset.authorId = p.author_id;
-    div.style.left = `${p.x}px`;
-    div.style.top = `${p.y}px`;
+    div.dataset.auteur = p.auteur_id;
+    div.style.left = p.x + 'px';
+    div.style.top = p.y + 'px';
     div.style.zIndex = p.z_index || 1;
 
-    const header = document.createElement('div');
+    var header = document.createElement('div');
     header.className = 'postit-header';
 
-    const authorSpan = document.createElement('span');
-    authorSpan.className = 'postit-author';
-    authorSpan.textContent = p.author_name;
+    var auteurSpan = document.createElement('span');
+    auteurSpan.className = 'postit-auteur';
+    auteurSpan.textContent = p.auteur_nom;
 
-    const dateSpan = document.createElement('span');
+    var dateSpan = document.createElement('span');
     dateSpan.className = 'postit-date';
-    dateSpan.textContent = new Date(p.created_at).toLocaleString('fr-FR');
+    dateSpan.textContent = new Date(p.created_at).toLocaleDateString('fr-FR');
 
-    header.appendChild(authorSpan);
+    header.appendChild(auteurSpan);
     header.appendChild(dateSpan);
 
-    if (window.CURRENT_USER && (window.CURRENT_USER.id === p.author_id || window.CURRENT_USER.can_admin)) {
-      const editBtn = document.createElement('button');
-      editBtn.className = 'icon-button edit-postit';
-      editBtn.title = 'Modifier';
-      editBtn.textContent = '✏️';
+    // ajouter les boutons si c'est son postit ou s'il est admin
+    if (CURRENT_USER && (CURRENT_USER.id === p.auteur_id || CURRENT_USER.can_admin)) {
+        var btnModifier = document.createElement('button');
+        btnModifier.className = 'btn-icone btn-modifier';
+        btnModifier.title = 'Modifier';
+        btnModifier.textContent = '✏️';
 
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'icon-button delete-postit';
-      deleteBtn.title = 'Supprimer';
-      deleteBtn.textContent = '✖';
+        var btnSupprimer = document.createElement('button');
+        btnSupprimer.className = 'btn-icone btn-supprimer';
+        btnSupprimer.title = 'Supprimer';
+        btnSupprimer.textContent = '✖';
 
-      header.appendChild(editBtn);
-      header.appendChild(deleteBtn);
+        header.appendChild(btnModifier);
+        header.appendChild(btnSupprimer);
     }
 
-    const body = document.createElement('div');
-    body.className = 'postit-body';
-    body.textContent = p.text;
+    var texteDiv = document.createElement('div');
+    texteDiv.className = 'postit-texte';
+    texteDiv.textContent = p.texte;
 
     div.appendChild(header);
-    div.appendChild(body);
+    div.appendChild(texteDiv);
 
-    boardEl.appendChild(div);
-    makeDraggable(div);
-  }
+    tableau.appendChild(div);
+    activerDrag(div);
+}
 
-  boardEl.addEventListener('click', e => {
-    const deleteBtn = e.target.closest('.delete-postit');
-    if (deleteBtn) {
-      const postit = deleteBtn.closest('.postit');
-      if (!postit) return;
-      const id = postit.dataset.id;
-      deletePostit(id);
-      return;
-    }
-    const editBtn = e.target.closest('.edit-postit');
-    if (editBtn) {
-      const postit = editBtn.closest('.postit');
-      if (!postit) return;
-      const id = postit.dataset.id;
-      const body = postit.querySelector('.postit-body');
-      const text = body ? body.textContent : '';
-      openModal('edit', { id, text });
-      return;
-    }
-  });
+// activer le drag and drop sur un postit
+function activerDrag(el) {
+    var enTrainDeDragger = false;
+    var startX = 0;
+    var startY = 0;
+    var posDepart_left = 0;
+    var posDepart_top = 0;
 
-  function makeDraggable(el) {
-    let startX = 0;
-    let startY = 0;
-    let originLeft = 0;
-    let originTop = 0;
-    let dragging = false;
+    el.addEventListener('pointerdown', function(e) {
+        // pas de drag sur les boutons
+        if (e.target.classList.contains('btn-icone')) return;
+        if (!CURRENT_USER) return;
 
-    function onPointerDown(e) {
-      if (e.button !== undefined && e.button !== 0) return;
-      // Don't start drag when interacting with controls (edit/delete)
-      if (e.target && e.target.closest && e.target.closest('.icon-button')) return;
-      const id = el.dataset.id;
-      if (!id) return;
-      if (!window.CURRENT_USER) return;
+        var auteurId = parseInt(el.dataset.auteur);
+        // seul le propriétaire ou l'admin peut déplacer
+        if (CURRENT_USER.id !== auteurId && !CURRENT_USER.can_admin) return;
 
-      const authorId = Number(el.dataset.authorId);
-      const canAdmin = !!window.CURRENT_USER.can_admin;
-      const isOwner = window.CURRENT_USER.id === authorId;
-      if (!isOwner && !canAdmin) return;
+        enTrainDeDragger = true;
+        el.setPointerCapture(e.pointerId);
+        startX = e.clientX;
+        startY = e.clientY;
+        posDepart_left = parseInt(el.style.left) || 0;
+        posDepart_top = parseInt(el.style.top) || 0;
+        e.preventDefault();
+    });
 
-      dragging = true;
-      el.setPointerCapture(e.pointerId);
+    el.addEventListener('pointermove', function(e) {
+        if (!enTrainDeDragger) return;
+        var dx = e.clientX - startX;
+        var dy = e.clientY - startY;
+        var newLeft = posDepart_left + dx;
+        var newTop = posDepart_top + dy;
 
-      startX = e.clientX;
-      startY = e.clientY;
-      originLeft = parseInt(el.style.left || '0', 10);
-      originTop = parseInt(el.style.top || '0', 10);
+        if (newLeft < 0) newLeft = 0;
+        if (newTop < 0) newTop = 0;
 
-      e.preventDefault();
-    }
+        el.style.left = newLeft + 'px';
+        el.style.top = newTop + 'px';
+    });
 
-    function onPointerMove(e) {
-      if (!dragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
+    el.addEventListener('pointerup', function(e) {
+        if (!enTrainDeDragger) return;
+        enTrainDeDragger = false;
 
-      let newLeft = originLeft + dx;
-      let newTop = originTop + dy;
+        var id = el.dataset.id;
+        var x = parseInt(el.style.left) || 0;
+        var y = parseInt(el.style.top) || 0;
 
-      const rect = boardEl.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-
-      if (newLeft < 0) newLeft = 0;
-      if (newTop < 0) newTop = 0;
-      if (newLeft + elRect.width - rect.left > rect.width) {
-        newLeft = rect.width - elRect.width;
-      }
-      if (newTop + elRect.height - rect.top > rect.height) {
-        newTop = rect.height - elRect.height;
-      }
-
-      el.style.left = `${newLeft}px`;
-      el.style.top = `${newTop}px`;
-    }
-
-    async function onPointerUp(e) {
-      if (!dragging) return;
-      dragging = false;
-      try {
-        const id = el.dataset.id;
-        const x = parseInt(el.style.left || '0', 10);
-        const y = parseInt(el.style.top || '0', 10);
-        const res = await fetch('/deplacer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, x, y })
+        // envoyer la nouvelle position au serveur
+        fetch('/deplacer', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            body: JSON.stringify({ id: id, x: x, y: y })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.ok) {
+                console.log('Erreur déplacement');
+            }
+        })
+        .catch(function(err) {
+            console.log('Erreur réseau déplacement:', err);
         });
-        const data = await res.json();
-        if (!data.ok) {
-          console.warn('Erreur lors du déplacement', data);
-        }
-      } catch (err) {
-        console.error('Erreur réseau lors du déplacement.', err);
-      }
-    }
+    });
 
-    el.addEventListener('pointerdown', onPointerDown);
-    el.addEventListener('pointermove', onPointerMove);
-    el.addEventListener('pointerup', onPointerUp);
-    el.addEventListener('pointercancel', onPointerUp);
-  }
+    el.addEventListener('pointercancel', function(e) {
+        enTrainDeDragger = false;
+    });
+}
 
-  document.querySelectorAll('.postit').forEach(makeDraggable);
-  // Initial clamp (useful when opening on a smaller screen)
-  scheduleClampAll();
-})();
-
+// activer le drag sur tous les postits déjà présents dans la page
+var tousLesPostits = document.querySelectorAll('.postit');
+for (var i = 0; i < tousLesPostits.length; i++) {
+    activerDrag(tousLesPostits[i]);
+}
