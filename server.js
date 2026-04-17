@@ -24,7 +24,7 @@ try {
         cert: fs.readFileSync(path.join(__dirname, 'certs', 'server.cert'))
     };
     console.log('Certificats SSL trouvés, HTTPS activé');
-} catch(e) {
+} catch (e) {
     console.log('Pas de certificats SSL - mode HTTP (développement)');
 }
 
@@ -46,7 +46,7 @@ app.use(express.json());
 
 // configuration des sessions
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'changez_ce_secret_en_production',
+    secret: process.env.SESSION_SECRET || 'notree_cle_par_défaut',
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -64,7 +64,7 @@ app.use(csrf());
 app.use(flash());
 
 // rendre les variables disponibles dans tous les templates EJS
-app.use(function(req, res, next) {
+app.use(function (req, res, next) {
     res.locals.user = req.session.user || null;
     res.locals.csrfToken = req.csrfToken();
     res.locals.erreur = req.flash('erreur');
@@ -97,7 +97,7 @@ function requireLogin(req, res, next) {
 // ========================
 
 // page principale
-app.get('/', async function(req, res) {
+app.get('/', async function (req, res) {
     try {
         // récupérer tous les postits avec le nom de l'auteur
         var postits = await db('postits')
@@ -107,14 +107,14 @@ app.get('/', async function(req, res) {
             .orderBy('postits.created_at', 'asc');
 
         res.render('index', { postits: postits });
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur GET /:', err.message);
         res.status(500).send('Erreur serveur');
     }
 });
 
 // page d'inscription
-app.get('/signup', function(req, res) {
+app.get('/signup', function (req, res) {
     if (req.session.user) {
         return res.redirect('/');
     }
@@ -122,7 +122,7 @@ app.get('/signup', function(req, res) {
 });
 
 // traitement de l'inscription
-app.post('/signup', async function(req, res) {
+app.post('/signup', async function (req, res) {
     var username = (req.body.username || '').trim();
     var password = req.body.password || '';
     var confirm = req.body.confirm || '';
@@ -184,7 +184,7 @@ app.post('/signup', async function(req, res) {
         });
         req.flash('succes', 'Compte créé avec succès ! Connectez-vous.');
         res.redirect('/');
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur inscription:', err.message);
         req.flash('erreur', 'Erreur lors de la création du compte');
         res.redirect('/signup');
@@ -192,7 +192,7 @@ app.post('/signup', async function(req, res) {
 });
 
 // connexion
-app.post('/login', loginLimiter, async function(req, res) {
+app.post('/login', loginLimiter, async function (req, res) {
     var username = (req.body.username || '').trim();
     var password = req.body.password || '';
 
@@ -217,7 +217,7 @@ app.post('/login', loginLimiter, async function(req, res) {
         }
 
         // régénérer l'ID de session pour éviter la fixation de session
-        req.session.regenerate(function(err) {
+        req.session.regenerate(function (err) {
             if (err) {
                 console.log('Erreur regenerate:', err);
                 req.flash('erreur', 'Erreur serveur');
@@ -231,11 +231,11 @@ app.post('/login', loginLimiter, async function(req, res) {
                 can_delete: user.can_delete == 1,
                 can_admin: user.can_admin == 1
             };
-            req.session.save(function(saveErr) {
+            req.session.save(function (saveErr) {
                 res.redirect('/');
             });
         });
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur login:', err.message);
         req.flash('erreur', 'Erreur serveur');
         res.redirect('/');
@@ -243,28 +243,28 @@ app.post('/login', loginLimiter, async function(req, res) {
 });
 
 // déconnexion
-app.get('/logout', function(req, res) {
-    req.session.destroy(function(err) {
+app.get('/logout', function (req, res) {
+    req.session.destroy(function (err) {
         res.redirect('/');
     });
 });
 
 // liste des postits en JSON (pour AJAX)
-app.get('/liste', async function(req, res) {
+app.get('/liste', async function (req, res) {
     try {
         var postits = await db('postits')
             .join('users', 'postits.auteur_id', 'users.id')
             .select('postits.*', 'users.username as auteur_nom')
             .orderBy('postits.z_index', 'asc');
         res.json({ ok: true, postits: postits });
-    } catch(err) {
+    } catch (err) {
         console.log(err.message);
         res.status(500).json({ ok: false });
     }
 });
 
 // ajouter un postit (AJAX)
-app.post('/ajouter', requireLogin, async function(req, res) {
+app.post('/ajouter', requireLogin, async function (req, res) {
     var user = req.session.user;
 
     if (!user.can_create) {
@@ -305,14 +305,14 @@ app.post('/ajouter', requireLogin, async function(req, res) {
             .first();
 
         res.json({ ok: true, postit: nouveau });
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur /ajouter:', err.message);
         res.status(500).json({ ok: false });
     }
 });
 
 // supprimer un postit (AJAX)
-app.post('/effacer', requireLogin, async function(req, res) {
+app.post('/effacer', requireLogin, async function (req, res) {
     var user = req.session.user;
 
     if (!user.can_delete) {
@@ -335,14 +335,14 @@ app.post('/effacer', requireLogin, async function(req, res) {
         }
         await db('postits').where('id', id).del();
         res.json({ ok: true });
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur /effacer:', err.message);
         res.status(500).json({ ok: false });
     }
 });
 
 // modifier le texte d'un postit (AJAX)
-app.post('/modifier', requireLogin, async function(req, res) {
+app.post('/modifier', requireLogin, async function (req, res) {
     var user = req.session.user;
 
     if (!user.can_edit) {
@@ -369,14 +369,14 @@ app.post('/modifier', requireLogin, async function(req, res) {
         }
         await db('postits').where('id', id).update({ texte: texte });
         res.json({ ok: true });
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur /modifier:', err.message);
         res.status(500).json({ ok: false });
     }
 });
 
 // déplacer un postit - drag and drop (AJAX)
-app.post('/deplacer', requireLogin, async function(req, res) {
+app.post('/deplacer', requireLogin, async function (req, res) {
     var user = req.session.user;
     var id = parseInt(req.body.id);
     var x = parseInt(req.body.x);
@@ -401,7 +401,7 @@ app.post('/deplacer', requireLogin, async function(req, res) {
         var nextZ = (res3.max || 0) + 1;
         await db('postits').where('id', id).update({ x: x, y: y, z_index: nextZ });
         res.json({ ok: true });
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur /deplacer:', err.message);
         res.status(500).json({ ok: false });
     }
@@ -412,20 +412,20 @@ app.post('/deplacer', requireLogin, async function(req, res) {
 //    PAGE ADMINISTRATION
 // ========================
 
-app.get('/admin', requireLogin, async function(req, res) {
+app.get('/admin', requireLogin, async function (req, res) {
     if (!req.session.user.can_admin) {
         return res.status(403).send('Accès refusé - administrateurs uniquement');
     }
     try {
         var users = await db('users').whereNot('username', 'guest').orderBy('id', 'asc');
         res.render('admin', { users: users });
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur /admin:', err.message);
         res.status(500).send('Erreur serveur');
     }
 });
 
-app.post('/admin/update', requireLogin, async function(req, res) {
+app.post('/admin/update', requireLogin, async function (req, res) {
     if (!req.session.user.can_admin) {
         return res.status(403).send('Accès refusé');
     }
@@ -445,10 +445,10 @@ app.post('/admin/update', requireLogin, async function(req, res) {
 
         var estSoi = userId == req.session.user.id;
         var can_create = req.body.can_create ? 1 : 0;
-        var can_edit   = req.body.can_edit   ? 1 : 0;
+        var can_edit = req.body.can_edit ? 1 : 0;
         var can_delete = req.body.can_delete ? 1 : 0;
         // on ne peut pas se retirer ses propres droits admin
-        var can_admin  = estSoi ? 1 : (req.body.can_admin ? 1 : 0);
+        var can_admin = estSoi ? 1 : (req.body.can_admin ? 1 : 0);
 
         await db('users').where('id', userId).update({
             can_create: can_create,
@@ -466,7 +466,7 @@ app.post('/admin/update', requireLogin, async function(req, res) {
 
         req.flash('succes', 'Permissions de ' + target.username + ' mises à jour');
         res.redirect('/admin');
-    } catch(err) {
+    } catch (err) {
         console.log('Erreur /admin/update:', err.message);
         req.flash('erreur', 'Erreur lors de la mise à jour');
         res.redirect('/admin');
@@ -475,7 +475,7 @@ app.post('/admin/update', requireLogin, async function(req, res) {
 
 
 // gestionnaire d'erreur global (doit être après toutes les routes)
-app.use(function(err, req, res, next) {
+app.use(function (err, req, res, next) {
     if (err.code === 'EBADCSRFTOKEN') {
         var isAjax = req.headers['content-type'] && req.headers['content-type'].indexOf('application/json') != -1;
         if (isAjax) {
@@ -494,19 +494,19 @@ app.use(function(err, req, res, next) {
 
 if (certOptions) {
     // lancer en HTTPS
-    https.createServer(certOptions, app).listen(PORT, function() {
+    https.createServer(certOptions, app).listen(PORT, function () {
         console.log('Serveur HTTPS démarré sur https://localhost:' + PORT);
     });
     // rediriger les connexions HTTP vers HTTPS
-    http.createServer(function(req, res) {
+    http.createServer(function (req, res) {
         var host = req.headers.host ? req.headers.host.split(':')[0] : 'localhost';
         res.writeHead(301, { 'Location': 'https://' + host + ':' + PORT + req.url });
         res.end();
-    }).listen(3001, function() {
+    }).listen(3001, function () {
         console.log('Redirection HTTP (port 3001) -> HTTPS (port ' + PORT + ')');
     });
 } else {
-    app.listen(PORT, function() {
+    app.listen(PORT, function () {
         console.log('Serveur démarré sur http://localhost:' + PORT);
     });
 }
