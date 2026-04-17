@@ -1,4 +1,5 @@
 BELHANAFI Abdelmadjid 22502311 M1 INFO IRS GROUPE 01
+AOUAE Hichem 22503791 M1 INFO IRS GROUPE 01
 
 # Post-it Social App
 
@@ -16,27 +17,32 @@ Application permettant aux utilisateurs de créer, modifier et gérer des post-i
 ## Installation
 
 1. Cloner le repository :
+
 ```bash
 git clone https://github.com/votre-username/projet-postit.git
 cd projet-postit
 ```
 
 2. Installer les dépendances :
+
 ```bash
 npm install
 ```
 
 3. Configurer les variables d'environnement :
+
 ```bash
 cp .env.example .env
 ```
 
 4. Démarrer le serveur :
+
 ```bash
 npm start
 ```
 
 Pour le développement avec auto-rechargement :
+
 ```bash
 npm run dev
 ```
@@ -79,5 +85,3 @@ Voir [package.json](package.json) pour la liste complète des dépendances.
 ├── package.json         # Dépendances
 └── README.md           # Documentation
 ```
-
-
