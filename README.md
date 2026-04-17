@@ -1,3 +1,5 @@
+BELHANAFI Abdelmadjid 22502311 M1 INFO IRS GROUPE 01
+
 # Post-it Social App
 
 Application de post-it sociale construite avec Node.js et Express.
@@ -78,6 +80,4 @@ Voir [package.json](package.json) pour la liste complète des dépendances.
 └── README.md           # Documentation
 ```
 
-## Licence
 
-MIT
