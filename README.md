@@ -31,6 +31,8 @@ npm install
 
 ```bash
 cp .env.example .env
+# Windows PowerShell:
+# Copy-Item .env.example .env
 ```
 
 4. Démarrer le serveur :
@@ -44,6 +46,12 @@ Pour le développement avec auto-rechargement :
 ```bash
 npm run dev
 ```
+
+## Déploiement sur Render
+
+- Start Command recommandé : `npm start`
+- Le serveur initialise automatiquement la base SQLite au démarrage (création des tables manquantes + migration `tableau_id`).
+- Si vous utilisez SQLite en production, configurez un disque persistant Render et stockez le fichier de base dessus pour éviter la perte des données entre redéploiements.
 
 ## Accès
 

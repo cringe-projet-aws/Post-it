@@ -96,21 +96,72 @@ function requireLogin(req, res, next) {
 //        ROUTES
 // ========================
 
-// migration: ajouter tableau_id si absent
-async function migrerTableauId() {
-    try {
-        var cols = await db('postits').columnInfo();
-        if (!cols.tableau_id) {
-            await db.schema.table('postits', function(t) {
-                t.string('tableau_id', 100).notNullable().defaultTo('default');
-            });
-            console.log('Colonne tableau_id ajoutée à postits');
-        }
-    } catch (err) {
-        console.log('Migration tableau_id:', err.message);
+// initialisation/migration de la base pour les environnements ne lançant pas setup.js
+async function initialiserBase() {
+    var hasUsers = await db.schema.hasTable('users');
+    if (!hasUsers) {
+        await db.schema.createTable('users', function(t) {
+            t.increments('id').primary();
+            t.string('username', 50).unique().notNullable();
+            t.string('password', 255).notNullable();
+            t.tinyint('can_create').defaultTo(1).notNullable();
+            t.tinyint('can_edit').defaultTo(1).notNullable();
+            t.tinyint('can_delete').defaultTo(1).notNullable();
+            t.tinyint('can_admin').defaultTo(0).notNullable();
+        });
+        console.log('Table users créée automatiquement');
+    }
+
+    var hasPostits = await db.schema.hasTable('postits');
+    if (!hasPostits) {
+        await db.schema.createTable('postits', function(t) {
+            t.increments('id').primary();
+            t.text('texte').notNullable();
+            t.datetime('created_at').defaultTo(db.fn.now());
+            t.integer('x').notNullable().defaultTo(0);
+            t.integer('y').notNullable().defaultTo(0);
+            t.integer('z_index').defaultTo(0);
+            t.integer('auteur_id').unsigned().notNullable();
+            t.foreign('auteur_id').references('id').inTable('users');
+        });
+        console.log('Table postits créée automatiquement');
+    }
+
+    var cols = await db('postits').columnInfo();
+    if (!cols.tableau_id) {
+        await db.schema.table('postits', function(t) {
+            t.string('tableau_id', 100).notNullable().defaultTo('default');
+        });
+        console.log('Colonne tableau_id ajoutée à postits');
+    }
+
+    var guest = await db('users').where('username', 'guest').first();
+    if (!guest) {
+        await db('users').insert({
+            username: 'guest',
+            password: 'PAS_DE_MOT_DE_PASSE',
+            can_create: 0,
+            can_edit: 0,
+            can_delete: 0,
+            can_admin: 0
+        });
+        console.log('Utilisateur guest créé automatiquement');
+    }
+
+    var admin = await db('users').where('username', 'admin').first();
+    if (!admin) {
+        var hash = bcrypt.hashSync('Admin1234!', 12);
+        await db('users').insert({
+            username: 'admin',
+            password: hash,
+            can_create: 1,
+            can_edit: 1,
+            can_delete: 1,
+            can_admin: 1
+        });
+        console.log('Admin par défaut créé automatiquement (admin / Admin1234!)');
     }
 }
-migrerTableauId();
 
 // valider un identifiant de tableau
 function slugValide(slug) {
@@ -533,20 +584,30 @@ app.use(function (err, req, res, next) {
 // ========================
 
 if (certOptions) {
-    // lancer en HTTPS
-    https.createServer(certOptions, app).listen(PORT, function () {
-        console.log('Serveur HTTPS démarré sur https://localhost:' + PORT);
-    });
-    // rediriger les connexions HTTP vers HTTPS
-    http.createServer(function (req, res) {
-        var host = req.headers.host ? req.headers.host.split(':')[0] : 'localhost';
-        res.writeHead(301, { 'Location': 'https://' + host + ':' + PORT + req.url });
-        res.end();
-    }).listen(3001, function () {
-        console.log('Redirection HTTP (port 3001) -> HTTPS (port ' + PORT + ')');
+    initialiserBase().then(function () {
+        // lancer en HTTPS
+        https.createServer(certOptions, app).listen(PORT, function () {
+            console.log('Serveur HTTPS démarré sur https://localhost:' + PORT);
+        });
+        // rediriger les connexions HTTP vers HTTPS
+        http.createServer(function (req, res) {
+            var host = req.headers.host ? req.headers.host.split(':')[0] : 'localhost';
+            res.writeHead(301, { 'Location': 'https://' + host + ':' + PORT + req.url });
+            res.end();
+        }).listen(3001, function () {
+            console.log('Redirection HTTP (port 3001) -> HTTPS (port ' + PORT + ')');
+        });
+    }).catch(function (err) {
+        console.error('Erreur initialisation base:', err.message);
+        process.exit(1);
     });
 } else {
-    app.listen(PORT, function () {
-        console.log('Serveur démarré sur http://localhost:' + PORT);
+    initialiserBase().then(function () {
+        app.listen(PORT, function () {
+            console.log('Serveur démarré sur http://localhost:' + PORT);
+        });
+    }).catch(function (err) {
+        console.error('Erreur initialisation base:', err.message);
+        process.exit(1);
     });
 }
