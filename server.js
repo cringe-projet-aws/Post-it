@@ -87,7 +87,7 @@ function requireLogin(req, res, next) {
             return res.status(401).json({ ok: false, message: 'Non connecté' });
         }
         req.flash('erreur', 'Vous devez être connecté');
-        return res.redirect('/');
+        return res.redirect('/default');
     }
     next();
 }
@@ -96,20 +96,46 @@ function requireLogin(req, res, next) {
 //        ROUTES
 // ========================
 
-// page principale
-app.get('/', async function (req, res) {
+// migration: ajouter tableau_id si absent
+async function migrerTableauId() {
     try {
-        // récupérer tous les postits avec le nom de l'auteur
+        var cols = await db('postits').columnInfo();
+        if (!cols.tableau_id) {
+            await db.schema.table('postits', function(t) {
+                t.string('tableau_id', 100).notNullable().defaultTo('default');
+            });
+            console.log('Colonne tableau_id ajoutée à postits');
+        }
+    } catch (err) {
+        console.log('Migration tableau_id:', err.message);
+    }
+}
+migrerTableauId();
+
+// valider un identifiant de tableau
+function slugValide(slug) {
+    return /^[a-z0-9_-]{1,50}$/.test(slug);
+}
+
+// page principale -> redirige vers le tableau par défaut
+app.get('/', function (req, res) {
+    res.redirect('/default');
+});
+
+// liste des postits en JSON (pour AJAX) - filtré par tableau
+app.get('/liste', async function (req, res) {
+    var board = (req.query.board || 'default').toLowerCase();
+    if (!slugValide(board)) board = 'default';
+    try {
         var postits = await db('postits')
             .join('users', 'postits.auteur_id', 'users.id')
             .select('postits.*', 'users.username as auteur_nom')
-            .orderBy('postits.z_index', 'asc')
-            .orderBy('postits.created_at', 'asc');
-
-        res.render('index', { postits: postits });
+            .where('postits.tableau_id', board)
+            .orderBy('postits.z_index', 'asc');
+        res.json({ ok: true, postits: postits });
     } catch (err) {
-        console.log('Erreur GET /:', err.message);
-        res.status(500).send('Erreur serveur');
+        console.log(err.message);
+        res.status(500).json({ ok: false });
     }
 });
 
@@ -198,7 +224,7 @@ app.post('/login', loginLimiter, async function (req, res) {
 
     if (!username || !password) {
         req.flash('erreur', 'Remplissez tous les champs');
-        return res.redirect('/');
+        return res.redirect('/default');
     }
 
     try {
@@ -207,13 +233,13 @@ app.post('/login', loginLimiter, async function (req, res) {
         // message d'erreur générique (on ne dit pas si le compte existe)
         if (!user || user.username === 'guest') {
             req.flash('erreur', 'Identifiants incorrects');
-            return res.redirect('/');
+            return res.redirect('/default');
         }
 
         var mdpOk = bcrypt.compareSync(password, user.password);
         if (!mdpOk) {
             req.flash('erreur', 'Identifiants incorrects');
-            return res.redirect('/');
+            return res.redirect('/default');
         }
 
         // régénérer l'ID de session pour éviter la fixation de session
@@ -221,7 +247,7 @@ app.post('/login', loginLimiter, async function (req, res) {
             if (err) {
                 console.log('Erreur regenerate:', err);
                 req.flash('erreur', 'Erreur serveur');
-                return res.redirect('/');
+                return res.redirect('/default');
             }
             req.session.user = {
                 id: user.id,
@@ -232,36 +258,24 @@ app.post('/login', loginLimiter, async function (req, res) {
                 can_admin: user.can_admin == 1
             };
             req.session.save(function (saveErr) {
-                res.redirect('/');
+                res.redirect('/default');
             });
         });
     } catch (err) {
         console.log('Erreur login:', err.message);
         req.flash('erreur', 'Erreur serveur');
-        res.redirect('/');
+        res.redirect('/default');
     }
 });
 
 // déconnexion
 app.get('/logout', function (req, res) {
     req.session.destroy(function (err) {
-        res.redirect('/');
+        res.redirect('/default');
     });
 });
 
-// liste des postits en JSON (pour AJAX)
-app.get('/liste', async function (req, res) {
-    try {
-        var postits = await db('postits')
-            .join('users', 'postits.auteur_id', 'users.id')
-            .select('postits.*', 'users.username as auteur_nom')
-            .orderBy('postits.z_index', 'asc');
-        res.json({ ok: true, postits: postits });
-    } catch (err) {
-        console.log(err.message);
-        res.status(500).json({ ok: false });
-    }
-});
+
 
 // ajouter un postit (AJAX)
 app.post('/ajouter', requireLogin, async function (req, res) {
@@ -274,6 +288,8 @@ app.post('/ajouter', requireLogin, async function (req, res) {
     var texte = (req.body.texte || '').trim();
     var x = parseInt(req.body.x) || 0;
     var y = parseInt(req.body.y) || 0;
+    var board = (req.body.board || 'default').toLowerCase();
+    if (!slugValide(board)) board = 'default';
 
     if (texte.length === 0) {
         return res.status(400).json({ ok: false, message: 'Le texte est vide' });
@@ -286,7 +302,7 @@ app.post('/ajouter', requireLogin, async function (req, res) {
 
     try {
         // calculer le z_index pour afficher le nouveau postit au dessus
-        var res2 = await db('postits').max('z_index as max').first();
+        var res2 = await db('postits').where('tableau_id', board).max('z_index as max').first();
         var nextZ = (res2.max || 0) + 1;
 
         var newIds = await db('postits').insert({
@@ -294,7 +310,8 @@ app.post('/ajouter', requireLogin, async function (req, res) {
             x: x,
             y: y,
             z_index: nextZ,
-            auteur_id: user.id
+            auteur_id: user.id,
+            tableau_id: board
         });
 
         // récupérer le postit complet avec le nom de l'auteur
@@ -381,6 +398,8 @@ app.post('/deplacer', requireLogin, async function (req, res) {
     var id = parseInt(req.body.id);
     var x = parseInt(req.body.x);
     var y = parseInt(req.body.y);
+    var board = (req.body.board || 'default').toLowerCase();
+    if (!slugValide(board)) board = 'default';
 
     if (!id || isNaN(x) || isNaN(y)) {
         return res.status(400).json({ ok: false, message: 'Données invalides' });
@@ -397,13 +416,34 @@ app.post('/deplacer', requireLogin, async function (req, res) {
             return res.status(403).json({ ok: false });
         }
         // passer en avant plan quand on déplace
-        var res3 = await db('postits').max('z_index as max').first();
+        var res3 = await db('postits').where('tableau_id', board).max('z_index as max').first();
         var nextZ = (res3.max || 0) + 1;
         await db('postits').where('id', id).update({ x: x, y: y, z_index: nextZ });
         res.json({ ok: true });
     } catch (err) {
         console.log('Erreur /deplacer:', err.message);
         res.status(500).json({ ok: false });
+    }
+});
+
+// tableau nommé - doit être après toutes les routes fixes
+app.get('/:board', async function (req, res) {
+    var board = (req.params.board || 'default').toLowerCase();
+    if (!slugValide(board)) {
+        return res.status(400).send('Nom de tableau invalide (lettres minuscules, chiffres, - et _ uniquement)');
+    }
+    try {
+        var postits = await db('postits')
+            .join('users', 'postits.auteur_id', 'users.id')
+            .select('postits.*', 'users.username as auteur_nom')
+            .where('postits.tableau_id', board)
+            .orderBy('postits.z_index', 'asc')
+            .orderBy('postits.created_at', 'asc');
+
+        res.render('index', { postits: postits, board: board });
+    } catch (err) {
+        console.log('Erreur GET /:board:', err.message);
+        res.status(500).send('Erreur serveur');
     }
 });
 

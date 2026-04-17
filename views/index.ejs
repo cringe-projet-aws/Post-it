@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Post-its</title>
+    <title>Post-its – <%= board %></title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -13,6 +13,17 @@
         <span class="logo-square"></span>
         <span class="titre">Post-its</span>
     </div>
+
+    <!-- navigation entre tableaux -->
+    <div class="board-nav">
+        <span class="board-badge">📋 <%= board %></span>
+        <form class="board-form" id="board-form" action="#" method="GET" onsubmit="allerAuTableau(event)">
+            <input type="text" id="board-input" name="board" placeholder="Nom du tableau" maxlength="50" autocomplete="off">
+            <button type="submit" class="btn btn-primary btn-petit">Accéder</button>
+        </form>
+        <a href="/default" class="btn btn-secondary btn-petit">Default</a>
+    </div>
+
     <div class="auth">
         <% if (user) { %>
             <span class="bienvenue">Bonjour, <strong><%= user.username %></strong></span>
@@ -89,6 +100,7 @@
 <script>
     var CURRENT_USER = <%- JSON.stringify(user || null) %>;
     var CSRF_TOKEN = '<%= csrfToken %>';
+    var BOARD_NAME = '<%= board %>';
 </script>
 <script src="/js/app.js"></script>
 </body>

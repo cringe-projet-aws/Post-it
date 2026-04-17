@@ -58,6 +58,52 @@ body {
     font-size: 0.9rem;
 }
 
+/* ===== NAVIGATION DES TABLEAUX ===== */
+
+.board-nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
+}
+
+.board-badge {
+    font-size: 0.8rem;
+    background: rgba(255,255,255,0.12);
+    color: #f5c400;
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-weight: bold;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+}
+
+.board-form {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.board-form input[type="text"] {
+    width: 130px;
+    font-size: 0.82rem;
+    padding: 4px 8px;
+    border: 1px solid #555;
+    background: #333;
+    color: white;
+    border-radius: 4px;
+}
+
+.board-form input[type="text"]::placeholder {
+    color: #888;
+}
+
+.board-form input[type="text"]:focus {
+    outline: 2px solid #f5c400;
+    border-color: #f5c400;
+}
+
 .login-form {
     display: flex;
     align-items: center;

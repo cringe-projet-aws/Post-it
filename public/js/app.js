@@ -16,6 +16,18 @@ var coordY = 0;
 var actionModal = '';
 var idPostitModal = null;
 
+// naviguer vers un tableau
+function allerAuTableau(e) {
+    e.preventDefault();
+    var nom = (document.getElementById('board-input').value || '').trim().toLowerCase();
+    if (!nom) return;
+    if (!/^[a-z0-9_-]{1,50}$/.test(nom)) {
+        alert('Nom de tableau invalide (lettres minuscules, chiffres, - et _ uniquement)');
+        return;
+    }
+    window.location.href = '/' + nom;
+}
+
 var tableau = document.getElementById('tableau');
 var modal = document.getElementById('modal');
 
@@ -172,7 +184,7 @@ function creerPostit(texte, x, y) {
             'Content-Type': 'application/json',
             'X-CSRF-Token': CSRF_TOKEN
         },
-        body: JSON.stringify({ texte: texte, x: Math.round(x), y: Math.round(y) })
+        body: JSON.stringify({ texte: texte, x: Math.round(x), y: Math.round(y), board: BOARD_NAME })
     })
     .then(function(response) {
         return response.json();
@@ -199,7 +211,7 @@ function modifierPostit(id, texte) {
             'Content-Type': 'application/json',
             'X-CSRF-Token': CSRF_TOKEN
         },
-        body: JSON.stringify({ id: id, texte: texte })
+        body: JSON.stringify({ id: id, texte: texte, board: BOARD_NAME })
     })
     .then(function(response) {
         return response.json();
@@ -232,7 +244,7 @@ function supprimerPostit(id) {
             'Content-Type': 'application/json',
             'X-CSRF-Token': CSRF_TOKEN
         },
-        body: JSON.stringify({ id: id })
+        body: JSON.stringify({ id: id, board: BOARD_NAME })
     })
     .then(function(response) {
         return response.json();
@@ -361,7 +373,7 @@ function activerDrag(el) {
                 'Content-Type': 'application/json',
                 'X-CSRF-Token': CSRF_TOKEN
             },
-            body: JSON.stringify({ id: id, x: x, y: y })
+            body: JSON.stringify({ id: id, x: x, y: y, board: BOARD_NAME })
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {

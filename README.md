@@ -1,4 +1,5 @@
 BELHANAFI Abdelmadjid 22502311 M1 INFO IRS GROUPE 01
+
 AOUAE Hichem 22503791 M1 INFO IRS GROUPE 01
 
 # Post-it Social App
@@ -19,7 +20,7 @@ Application permettant aux utilisateurs de créer, modifier et gérer des post-i
 1. Cloner le repository :
 
 ```bash
-git clone https://github.com/votre-username/projet-postit.git
+git clone https://github.com/hichemaouane/projet-postit.git
 cd projet-postit
 ```
 
