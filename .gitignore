@@ -8,6 +8,7 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+.admin.txt
 
 # Fichiers de base de données SQLite
 *.db
@@ -35,3 +36,7 @@ Thumbs.db
 # Fichiers temporaires
 tmp/
 temp/
+
+node_modules/
+*.db
+.env
