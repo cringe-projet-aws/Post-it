@@ -150,7 +150,8 @@ async function initialiserBase() {
 
     var admin = await db('users').where('username', 'admin').first();
     if (!admin) {
-        var hash = bcrypt.hashSync('Admin1234!', 12);
+        var adminPassword = process.env.ADMIN_PASSWORD || 'Admin1234!';
+        var hash = bcrypt.hashSync(adminPassword, 12);
         await db('users').insert({
             username: 'admin',
             password: hash,
@@ -159,7 +160,10 @@ async function initialiserBase() {
             can_delete: 1,
             can_admin: 1
         });
-        console.log('Admin par défaut créé automatiquement (admin / Admin1234!)');
+        console.log('Admin par défaut créé automatiquement');
+        if (!process.env.ADMIN_PASSWORD) {
+            console.warn('⚠️  ADMIN_PASSWORD non défini dans .env - mot de passe par défaut utilisé');
+        }
     }
 }
 
