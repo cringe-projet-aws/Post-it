@@ -62,7 +62,15 @@
                     </label>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-petit">Sauvegarder</button>
+                <div class="user-actions">
+                    <button type="submit" class="btn btn-primary btn-petit">Sauvegarder</button>
+                </div>
+            </form>
+
+            <form action="/admin/delete" method="POST" onsubmit="return confirm('Êtes-vous sûr? Les post-its de cet utilisateur seront aussi supprimés.');">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="userId" value="<%= u.id %>">
+                <button type="submit" class="btn btn-danger btn-petit">Supprimer</button>
             </form>
         </div>
     <% }); %>

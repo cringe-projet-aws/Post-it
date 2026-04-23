@@ -546,6 +546,50 @@ app.post('/admin/update', requireLogin, async function (req, res) {
     }
 });
 
+app.post('/admin/delete', requireLogin, async function (req, res) {
+    if (!req.session.user.can_admin) {
+        return res.status(403).send('Accès refusé');
+    }
+
+    var userId = parseInt(req.body.userId);
+    if (!userId || userId <= 0) {
+        req.flash('erreur', 'ID utilisateur invalide');
+        return res.redirect('/admin');
+    }
+
+    try {
+        var target = await db('users').where('id', userId).first();
+        if (!target) {
+            req.flash('erreur', 'Utilisateur introuvable');
+            return res.redirect('/admin');
+        }
+
+        // protection: ne pas supprimer les utilisateurs système
+        if (target.username === 'guest' || target.username === 'admin') {
+            req.flash('erreur', 'Impossible de supprimer cet utilisateur système');
+            return res.redirect('/admin');
+        }
+
+        // protection: un admin ne peut pas se supprimer lui-même
+        if (target.id === req.session.user.id) {
+            req.flash('erreur', 'Vous ne pouvez pas supprimer votre propre compte');
+            return res.redirect('/admin');
+        }
+
+        // supprimer d'abord tous les postits de l'utilisateur
+        await db('postits').where('auteur_id', userId).del();
+        // puis supprimer l'utilisateur
+        await db('users').where('id', userId).del();
+
+        req.flash('succes', 'Utilisateur ' + target.username + ' supprimé avec succès');
+        res.redirect('/admin');
+    } catch (err) {
+        console.log('Erreur /admin/delete:', err.message);
+        req.flash('erreur', 'Erreur lors de la suppression');
+        res.redirect('/admin');
+    }
+});
+
 
 // tableau nommé - doit être après toutes les routes fixes
 app.get('/:board', async function (req, res) {
