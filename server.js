@@ -481,28 +481,6 @@ app.post('/deplacer', requireLogin, async function (req, res) {
     }
 });
 
-// tableau nommé - doit être après toutes les routes fixes
-app.get('/:board', async function (req, res) {
-    var board = (req.params.board || 'default').toLowerCase();
-    if (!slugValide(board)) {
-        return res.status(400).send('Nom de tableau invalide (lettres minuscules, chiffres, - et _ uniquement)');
-    }
-    try {
-        var postits = await db('postits')
-            .join('users', 'postits.auteur_id', 'users.id')
-            .select('postits.*', 'users.username as auteur_nom')
-            .where('postits.tableau_id', board)
-            .orderBy('postits.z_index', 'asc')
-            .orderBy('postits.created_at', 'asc');
-
-        res.render('index', { postits: postits, board: board });
-    } catch (err) {
-        console.log('Erreur GET /:board:', err.message);
-        res.status(500).send('Erreur serveur');
-    }
-});
-
-
 // ========================
 //    PAGE ADMINISTRATION
 // ========================
@@ -565,6 +543,28 @@ app.post('/admin/update', requireLogin, async function (req, res) {
         console.log('Erreur /admin/update:', err.message);
         req.flash('erreur', 'Erreur lors de la mise à jour');
         res.redirect('/admin');
+    }
+});
+
+
+// tableau nommé - doit être après toutes les routes fixes
+app.get('/:board', async function (req, res) {
+    var board = (req.params.board || 'default').toLowerCase();
+    if (!slugValide(board)) {
+        return res.status(400).send('Nom de tableau invalide (lettres minuscules, chiffres, - et _ uniquement)');
+    }
+    try {
+        var postits = await db('postits')
+            .join('users', 'postits.auteur_id', 'users.id')
+            .select('postits.*', 'users.username as auteur_nom')
+            .where('postits.tableau_id', board)
+            .orderBy('postits.z_index', 'asc')
+            .orderBy('postits.created_at', 'asc');
+
+        res.render('index', { postits: postits, board: board });
+    } catch (err) {
+        console.log('Erreur GET /:board:', err.message);
+        res.status(500).send('Erreur serveur');
     }
 });
 
